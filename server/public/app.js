@@ -14,7 +14,7 @@ function showView(id, focus = false) {
   if (id !== 'tablets') { $('device-token').value = ''; $('device-secret').hidden = true; }
   if (focus && id === 'tablets' && current?.role === 'Admin') loadDevices().catch(error => { $('status').textContent = error.message; });
   if (focus && id === 'attendance') loadPunches().catch(error => { $('status').textContent = error.message; });
-  if (focus && id === 'schedules' && current?.role === 'Admin') loadSchedules().catch(error => { $('status').textContent = error.message; });
+  if (focus && id === 'schedules' && current) loadSchedules().catch(error => { $('status').textContent = error.message; });
 }
 for (const button of document.querySelectorAll('[data-view]')) button.addEventListener('click', () => showView(button.dataset.view, true));
 async function api(path, options = {}) {
@@ -41,9 +41,11 @@ async function load() {
   const admin = current.role === 'Admin';
     $('demo-seed').hidden = !admin;
   $('tablet-nav').hidden = !admin;
-  $('schedule-nav').hidden = !admin;
+  $('schedule-nav').hidden = false;
+  $('settings-nav').hidden = !admin;
+  $('new-schedule').hidden = !admin;
   $('identity').textContent = `${current.username} · ${current.role}`;
-  $('worker').hidden = !admin; $('user-list').hidden = !admin;
+  $('worker').hidden = false; $('user-list').hidden = !admin;
   $('role').replaceChildren(...(admin ? ['User', 'Admin'] : ['User']).map(role => { const option = element('option', role); option.value = role; return option; }));
   await loadWorkers(); if (admin) await loadUsers();
 }
@@ -66,7 +68,7 @@ function renderWorkers() {
         const details = document.createElement('dl');
         for (const [title, value] of [['Nombre', record.name], ['Código', record.code], ['Estado', record.active ? 'Activo' : 'Inactivo']]) details.append(element('dt', title), element('dd', value));
         $('profile-content').replaceChildren(details);
-        if (current?.role === 'Admin') {
+        if (current) {
           const toggle = element('button', record.active ? 'Desactivar' : 'Activar'); toggle.type = 'button';
           toggle.addEventListener('click', async () => {
             toggle.disabled = true;
@@ -74,7 +76,7 @@ function renderWorkers() {
             catch (error) { $('status').textContent = error.message; $('profile').close(); }
           }); $('profile-content').append(toggle);
         }
-        if (current?.role === 'Admin') $('profile-content').append(await profileSchedule(record));
+        $('profile-content').append(workerEditor(record),await profileSchedule(record));
         $('profile').showModal();
       } catch (error) { $('status').textContent = error.message; } finally { open.disabled = false; }
     });
@@ -235,8 +237,9 @@ $('day-form').addEventListener('submit',async event=>{
  }catch(error){$('day-error').textContent=error.message;}
 });
 function editSchedule(row=null){
+ $('schedule-form').hidden=!row && current?.role!=='Admin';
  if(scheduleDirty&&!confirm('¿Descartar cambios sin guardar?'))return;
- scheduleId=row?.id||null;scheduleRevision=row?.revision||null;$('delete-schedule').hidden=!scheduleId;const value=row?.definition||{name:'',zone:Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC',markBreaks:false,days:[]};
+ scheduleId=row?.id||null;scheduleRevision=row?.revision||null;$('delete-schedule').hidden=!scheduleId || current?.role!=='Admin';const value=row?.definition||{name:'',zone:Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC',markBreaks:false,days:[]};
  $('schedule-name').value=value.name;$('schedule-zone').value=value.zone;$('schedule-mark').checked=value.markBreaks;
  weekDraft=dayNames.map((_,i)=>{const d=value.days.find(d=>d.weekday===i+1);return {weekday:i+1,selected:Boolean(d),configured:Boolean(d),value:d?{start:d.start,end:d.end,breaks:structuredClone(d.breaks)}:null};});
  $('schedule-message').textContent='';$('save-schedule').textContent=scheduleId?'Guardar cambios':'Crear horario';scheduleDirty=false;renderWeek();schedulePreview();renderSchedules();
@@ -319,3 +322,10 @@ $('demo-seed').addEventListener('click',async()=>{
 
 document.addEventListener('click',event=>{if(!$('settings-nav').contains(event.target))$('settings-nav').open=false;});
 $('settings-nav').addEventListener('keydown',event=>{if(event.key==='Escape'){$('settings-nav').open=false;$('settings-nav').querySelector('summary').focus();}});
+
+function workerEditor(record){
+ const form=element('form','','profile-schedule');
+ for(const [key,title] of [['name','Nombre'],['code','Código']]){const label=element('label',title),input=document.createElement('input');input.name=key;input.value=record[key];input.required=true;input.maxLength=key==='code'?20:100;label.append(input);form.append(label);}
+ const save=element('button','Guardar colaborador'),message=element('p','');message.setAttribute('role','status');form.append(save,message);
+ form.addEventListener('submit',async event=>{event.preventDefault();save.disabled=true;try{await write('/api/workers/'+record.id,Object.fromEntries(new FormData(form)),'PATCH');await loadWorkers();$('profile').close();}catch(error){message.textContent=error.message;}finally{save.disabled=false;}});return form;
+}

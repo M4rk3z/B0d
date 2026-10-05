@@ -65,9 +65,10 @@ test('Fundación web con PostgreSQL embebido', async t => {
       assert.equal(login.status, 200); cookie = login.headers.get('set-cookie').split(';')[0]; const userCookie = cookie;
       assert.equal((await request('/api/workers')).status, 200);
       assert.equal((await request('/api/users')).status, 403);
-      assert.equal((await request('/api/workers', 'POST', { code: 'NO', name: 'No' })).status, 403);
+      const workerResponse=await request('/api/workers','POST',{code:'USER-1',name:'Alta User'});assert.equal(workerResponse.status,201);
+      const worker=await workerResponse.json();assert.equal((await request('/api/workers/'+worker.id,'PATCH',{code:'USER-2',name:'Editado User'})).status,200);
       assert.equal((await request('/api/users', 'POST', { username: 'escalation', password: 'abc123', role: 'Admin' })).status, 403);
-      assert.equal((await request('/api/users', 'POST', { username: 'another-user', password: 'abc123', role: 'User' })).status, 201);
+      assert.equal((await request('/api/users', 'POST', { username: 'another-user', password: 'abc123', role: 'User' })).status, 403);
       assert.equal((await request(`/api/users/${user.id}`, 'PATCH', { role: 'Admin', active: true })).status, 403);
       cookie = adminCookie;
       assert.equal((await request(`/api/users/${user.id}`, 'PATCH', { role: 'User', active: false })).status, 200);

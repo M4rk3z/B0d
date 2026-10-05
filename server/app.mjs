@@ -158,6 +158,7 @@ export function createApplication(pool, { origin }) {
         requireAdmin(); json(200, (await pool.query('SELECT id,username,role,active FROM b0d_users ORDER BY username')).rows); return;
       }
       if (path === '/api/users' && req.method === 'POST') {
+        requireAdmin();
         const input = await body(req);
         requireValue(typeof input?.username === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_.@-]{2,99}$/.test(input.username.trim()), 'Usuario: entre 3 y 100 caracteres, sin espacios');
         requireValue(['Admin', 'User'].includes(input.role), 'Rol inválido');
@@ -200,7 +201,6 @@ export function createApplication(pool, { origin }) {
         json(200, (await pool.query('SELECT id,code,name,active FROM b0d_workers ORDER BY active DESC,name,code')).rows); return;
       }
       if (req.method === 'POST' && path === '/api/workers') {
-        requireAdmin();
         const { code, name } = workerFields(await body(req)); const id = randomUUID();
         const client = await pool.connect();
         try {
@@ -212,13 +212,15 @@ export function createApplication(pool, { origin }) {
         json(201, { id, code, name, active: true }); return;
       }
       if (req.method === 'PATCH' && path.startsWith('/api/workers/')) {
-        requireAdmin(); const id = path.slice('/api/workers/'.length); const input = await body(req);
-        requireValue(/^[a-f0-9-]{36}$/.test(id) && typeof input?.active === 'boolean', 'Estado inválido');
-        if (!input.active) {
+        const id = path.slice('/api/workers/'.length); const input = await body(req);
+        requireValue(/^[a-f0-9-]{36}$/.test(id) && input && (input.active === undefined || typeof input.active === 'boolean'), 'Estado inválido');
+        const fields=input.name!==undefined || input.code!==undefined ? workerFields(input) : null;
+        requireValue(fields || typeof input.active==='boolean','Datos requeridos');
+        if (input.active === false) {
           const last = (await pool.query('SELECT kind FROM b0d_punches WHERE worker_id=$1 ORDER BY occurred_at DESC,event_id DESC LIMIT 1', [id])).rows[0];
           if (last && last.kind !== 'OUT') throw new HttpError(409, 'Registra y sincroniza la salida antes de desactivar');
         }
-        const result = await pool.query('UPDATE b0d_workers SET active=$2,updated_at=now() WHERE id=$1 RETURNING id,code,name,active', [id,input.active]);
+        const result = await pool.query('UPDATE b0d_workers SET active=COALESCE($2,active),code=COALESCE($3,code),name=COALESCE($4,name),updated_at=now() WHERE id=$1 RETURNING id,code,name,active', [id,input.active??null,fields?.code??null,fields?.name??null]);
         if (!result.rows.length) throw new HttpError(404, 'Colaborador no encontrado');
         json(200,result.rows[0]); return;
       }
