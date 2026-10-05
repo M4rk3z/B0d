@@ -7,6 +7,8 @@ function showView(id, focus = false) {
     if (button.dataset.view === id) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
   }
+  $('settings-nav').classList.toggle('current', ['accounts','tablets'].includes(id));
+  $('settings-nav').open = false;
   if (focus) $(`${id}-title`).focus();
   $('status').textContent = '';
   if (id !== 'tablets') { $('device-token').value = ''; $('device-secret').hidden = true; }
@@ -35,7 +37,7 @@ const write = (path, data, method = 'POST') => api(path, { method, headers: { 'C
 function element(tag, text, className) { const node = document.createElement(tag); node.textContent = text; if (className) node.className = className; return node; }
 async function load() {
   current = await api('/api/me'); visible(true);
-  showView('accounts');
+  showView('staff');
   const admin = current.role === 'Admin';
     $('demo-seed').hidden = !admin;
   $('tablet-nav').hidden = !admin;
@@ -311,3 +313,6 @@ $('demo-seed').addEventListener('click',async()=>{
  try{const data=await write('/api/demo-data',{confirmation:'DEMO-15'});$('report-from').value=data.from;$('report-to').value=data.to;await loadWorkers();await loadPunches();await runReport('json');$('report-status').textContent=`${data.alreadyLoaded?'Datos de prueba ya existentes':'Datos de prueba cargados'}: ${data.workers} colaboradores · ${data.schedules} horarios · ${data.days} jornadas · ${data.punches} marcaciones · ${data.overtimeHours} horas extras`;}
  catch(error){$('report-status').textContent=error.message;}finally{$('demo-seed').disabled=false;}
 });
+
+document.addEventListener('click',event=>{if(!$('settings-nav').contains(event.target))$('settings-nav').open=false;});
+$('settings-nav').addEventListener('keydown',event=>{if(event.key==='Escape'){$('settings-nav').open=false;$('settings-nav').querySelector('summary').focus();}});
