@@ -104,8 +104,8 @@ async function loadUsers() {
       try {
         await write(`/api/users/${user.id}`, { role: role.value, active: active.checked }, 'PATCH');
 
-        if (user.id === current.id) { visible(false); $('status').textContent = 'Cambios guardados. Inicia sesión de nuevo.'; }
-        else { await loadUsers(); $('status').textContent = 'Usuario actualizado'; }
+        if (user.id === current.id) { visible(false); $('status').textContent = ''; }
+        else { await loadUsers(); $('status').textContent = ''; }
       } catch (error) { $('status').textContent = error.message; } finally { button.disabled = false; }
     }); $('users').append(form);
   }
@@ -120,7 +120,7 @@ function submit(id, callback) {
 }
 submit('login', async data => { try { await write('/api/login', data); await load(); } finally { $('login').elements.password.value = ''; } });
 submit('worker', async data => { await write('/api/workers', data); $('worker').reset(); await loadWorkers(); });
-submit('account', async data => { await write('/api/users', data); $('account').reset(); if (current.role === 'Admin') await loadUsers(); $('status').textContent = 'Usuario creado'; });
+submit('account', async data => { await write('/api/users', data); $('account').reset(); if (current.role === 'Admin') await loadUsers(); $('status').textContent = ''; });
 $('logout').addEventListener('click', async () => { try { await write('/api/logout', {}); visible(false); } catch (error) { $('status').textContent = error.message; } });
 $('download').addEventListener('click', async () => {
   $('download').disabled = true; $('status').textContent = '';
@@ -132,7 +132,7 @@ $('download').addEventListener('click', async () => {
     const csv = '\ufeff' + [['Código', 'Nombre', 'Estado'], ...rows.map(row => [row.code, row.name, row.active ? 'Activo' : 'Inactivo'])].map(row => row.map(cell).join(',')).join('\r\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a'); link.href = url; link.download = 'B0d-colaboradores.csv'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-    $('status').textContent = 'Descarga generada';
+    $('status').textContent = '';
   } catch (error) { $('status').textContent = error.message; } finally { $('download').disabled = false; }
 });
 load().catch(error => { visible(false); if (error.message !== 'Inicia sesión' && error.message !== 'La sesión terminó') $('status').textContent = error.message; });
@@ -252,7 +252,7 @@ async function loadSchedules(){scheduleRows=await api('/api/schedules');if(!$('s
 $('schedule-search').addEventListener('input',renderSchedules);$('new-schedule').addEventListener('click',()=>editSchedule());$('schedule-form').addEventListener('input',scheduleChanged);$('schedule-form').addEventListener('change',scheduleChanged);
 $('schedule-form').addEventListener('submit',async event=>{
  event.preventDefault();$('save-schedule').disabled=true;
- try{const {validateSchedule}=await scheduleRules;const definition=validateSchedule(readSchedule());const saved=await write(scheduleId?`/api/schedules/${scheduleId}`:'/api/schedules',{...definition,revision:scheduleRevision},scheduleId?'PATCH':'POST');scheduleDirty=false;scheduleRows=await api('/api/schedules');editSchedule(saved);$('schedule-message').textContent='Guardado. Para aplicar esta versión, asígnala desde el perfil del colaborador.';}catch(error){$('schedule-message').textContent=error.message;}finally{$('save-schedule').disabled=false;}
+ try{const {validateSchedule}=await scheduleRules;const definition=validateSchedule(readSchedule());const saved=await write(scheduleId?`/api/schedules/${scheduleId}`:'/api/schedules',{...definition,revision:scheduleRevision},scheduleId?'PATCH':'POST');scheduleDirty=false;scheduleRows=await api('/api/schedules');editSchedule(saved);$('schedule-message').textContent='';}catch(error){$('schedule-message').textContent=error.message;}finally{$('save-schedule').disabled=false;}
 });
 async function profileSchedule(worker){
  const [schedules,assignments]=await Promise.all([api('/api/schedules'),api('/api/schedule-assignments')]);
@@ -260,7 +260,7 @@ async function profileSchedule(worker){
  const form=document.createElement('form');const select=document.createElement('select');select.setAttribute('aria-label','Horario');for(const row of schedules){const option=element('option',`${row.definition.name} · v${row.revision}`);option.value=row.id;select.append(option);}if(last && schedules.some(s=>s.id===last.schedule_id))select.value=last.schedule_id;
  const date=document.createElement('input');date.type='date';date.required=true;date.setAttribute('aria-label','Fecha de inicio');const tomorrow=new Date();tomorrow.setDate(tomorrow.getDate()+1);date.value=`${tomorrow.getFullYear()}-${String(tomorrow.getMonth()+1).padStart(2,'0')}-${String(tomorrow.getDate()).padStart(2,'0')}`;
  const label=element('label','Aplicar desde (a partir de mañana)');label.append(date);const save=element('button','Guardar asignación');save.disabled=!schedules.length;const message=element('p','');message.setAttribute('role','status');form.append(select,label,save,message);
- form.addEventListener('submit',async event=>{event.preventDefault();save.disabled=true;try{await write('/api/schedule-assignments',{workerId:worker.id,scheduleId:select.value,date:date.value});message.textContent='Asignación guardada. Se enviará a la tablet en la próxima sincronización.';}catch(error){message.textContent=error.message;}finally{save.disabled=!schedules.length;}});
+ form.addEventListener('submit',async event=>{event.preventDefault();save.disabled=true;try{await write('/api/schedule-assignments',{workerId:worker.id,scheduleId:select.value,date:date.value});message.textContent='';}catch(error){message.textContent=error.message;}finally{save.disabled=!schedules.length;}});
  const edit=element('button','Editar horario');edit.type='button';edit.disabled=!schedules.length;edit.addEventListener('click',async()=>{try{scheduleRows=await api('/api/schedules');const row=scheduleRows.find(row=>row.id===select.value);$('profile').close();showView('schedules');editSchedule(row);}catch(error){message.textContent=error.message;}});box.append(form,edit);return box;
 }
 
@@ -280,13 +280,13 @@ submit('password-form',async()=>{
  if($('new-password').value!==$('repeat-password').value){$('password-message').textContent='Las contraseñas no coinciden';return;}
  const user=passwordUser;
  try{await write('/api/users/'+user.id,{password:$('new-password').value},'PATCH');$('password-dialog').close();
- if(user.id===current.id){visible(false);$('status').textContent='Contraseña actualizada. Inicia sesión de nuevo.';}else $('status').textContent='Contraseña actualizada';
+ if(user.id===current.id){visible(false);$('status').textContent='';}else $('status').textContent='';
  }catch(error){$('password-message').textContent=error.message;}
 });
 $('delete-schedule').addEventListener('click',async()=>{
  const id=scheduleId;if(!id||!await confirmAction('¿Eliminar este horario del catálogo? Se conservarán las asignaciones y jornadas que ya lo utilizan.'))return;
  $('delete-schedule').disabled=true;
- try{await write('/api/schedules/'+id,{},'DELETE');scheduleDirty=false;scheduleRows=await api('/api/schedules');editSchedule();$('schedule-message').textContent='Horario eliminado';}
+ try{await write('/api/schedules/'+id,{},'DELETE');scheduleDirty=false;scheduleRows=await api('/api/schedules');editSchedule();$('schedule-message').textContent='';}
  catch(error){$('schedule-message').textContent=error.message;}finally{$('delete-schedule').disabled=false;}
 });
 
@@ -295,18 +295,18 @@ $('report-to').value=reportDate(reportToday);$('report-from').value=reportDate(n
 function reportParams(format){return new URLSearchParams({from:$('report-from').value,to:$('report-to').value,type:$('report-type').value,format});}
 async function runReport(format){
  if(!$('report-form').reportValidity())return;
- const buttons=$('report-form').querySelectorAll('button');buttons.forEach(b=>b.disabled=true);$('report-status').textContent='Preparando reporte…';
+ const buttons=$('report-form').querySelectorAll('button');buttons.forEach(b=>b.disabled=true);$('report-status').textContent='';
  try{
   if(format==='json'){
    const data=await api('/api/reports?'+reportParams(format));const table=document.createElement('table'),head=document.createElement('thead'),body=document.createElement('tbody');
    if(data.type==='total'){const groups=document.createElement('tr');for(const [label,span,css] of [['',2,''],['Horario Regular',3,'regular-group'],['Horas Extras',3,'extra-group'],['Horas regulares + extras',1,'']]){const th=element('th',label,css);th.colSpan=span;groups.append(th);}head.append(groups);}
-   const labels=document.createElement('tr');for(const label of data.headers)labels.append(element('th',label));head.append(labels);table.append(head,body);
+   const labels=document.createElement('tr');for(const label of data.headers){const th=element('th',label.replace('*',''));if(data.note && label.includes('Salida'))th.title=data.note;labels.append(th);}head.append(labels);table.append(head,body);
    data.table.forEach((cells,index)=>{const tr=document.createElement('tr');for(const cell of cells)tr.append(element('td',cell));if(data.rows[index].issues.length){tr.className='report-issue';tr.title=data.rows[index].issues.join('; ');}body.append(tr);});$('report-preview').replaceChildren(table);
    const notes=data.rows.filter(row=>row.issues.length);if(notes.length){const details=document.createElement('details');details.append(element('summary',`Observaciones (${notes.length})`));for(const row of notes)details.append(element('p',`${row.date} · ${row.code}: ${row.issues.join('; ')}`));$('report-preview').append(details);}
-   $('report-status').textContent=`${data.rows.length} jornadas · Duraciones en horas:minutos${data.note ? " · "+data.note : ""}`;
+   $('report-status').textContent='';
   }else{
    const response=await fetch('/api/reports?'+reportParams(format),{credentials:'same-origin'});if(!response.ok){const data=await response.json();if(response.status===401)visible(false);throw new Error(data.error||'No se pudo generar el archivo');}
-   const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=url;link.download=`Marcaje-${$('report-type').value==='regular'?'Regular':'Total'}-${$('report-from').value}-${$('report-to').value}.${format}`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);$('report-status').textContent='Archivo generado';
+   const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=url;link.download=`Marcaje-${$('report-type').value==='regular'?'Regular':'Total'}-${$('report-from').value}-${$('report-to').value}.${format}`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);$('report-status').textContent='';
   }
  }catch(error){$('report-status').textContent=error.message;}finally{buttons.forEach(b=>b.disabled=false);}
 }
@@ -316,7 +316,7 @@ for(const id of ['report-from','report-to','report-type'])$(id).addEventListener
 $('demo-seed').addEventListener('click',async()=>{
  if(!await confirmAction('Cargar 15 colaboradores DEMO inactivos, 3 horarios y 75 jornadas del 28 de septiembre al 2 de octubre de 2026. Incluye 25 horas extras. No modifica personal real ni duplica una carga anterior.'))return;
  $('demo-seed').disabled=true;
- try{const data=await write('/api/demo-data',{confirmation:'DEMO-15'});$('report-from').value=data.from;$('report-to').value=data.to;await loadWorkers();await loadPunches();await runReport('json');$('report-status').textContent=`${data.alreadyLoaded?'Datos de prueba ya existentes':'Datos de prueba cargados'}: ${data.workers} colaboradores · ${data.schedules} horarios · ${data.days} jornadas · ${data.punches} marcaciones · ${data.overtimeHours} horas extras`;}
+ try{const data=await write('/api/demo-data',{confirmation:'DEMO-15'});$('report-from').value=data.from;$('report-to').value=data.to;await loadWorkers();await loadPunches();await runReport('json');$('report-status').textContent='';}
  catch(error){$('report-status').textContent=error.message;}finally{$('demo-seed').disabled=false;}
 });
 
