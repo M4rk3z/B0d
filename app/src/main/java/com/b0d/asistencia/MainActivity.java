@@ -65,6 +65,11 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         lifecycle.handleLifecycleEvent(androidx.lifecycle.Lifecycle.Event.ON_CREATE);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         access = new AdminAccess(new PreferenceCredentialStore(this));
+        if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                && !getPreferences(MODE_PRIVATE).getBoolean("camera_requested", false)) {
+            getPreferences(MODE_PRIVATE).edit().putBoolean("camera_requested", true).apply();
+            requestPermissions(new String[]{android.Manifest.permission.CAMERA}, 42);
+        }
         if (Build.VERSION.SDK_INT >= 33) {
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
                     android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
@@ -177,8 +182,10 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         }); root.requestApplyInsets();
         TextView brand = new TextView(this); brand.setText(R.string.kiosk_brand); brand.setTextSize(23);
         brand.setTypeface(null, Typeface.BOLD); brand.setTextColor(0xff172b42);
-        panel.addView(brand, new LinearLayout.LayoutParams(-1, dp(40)));
-        cloudStatus = text(new CloudSync(this).status(), 12);
+        LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
+        header.addView(brand, new LinearLayout.LayoutParams(0, dp(48), 1));
+        panel.addView(header, new LinearLayout.LayoutParams(-1, dp(64)));
+        cloudStatus = null;
         FrameLayout cameraBox = new FrameLayout(this);
         cameraBox.setBackground(surface(0xffe3eaf3, 0xffd8e1ed, 20)); cameraBox.setClipToOutline(true);
         panel.addView(cameraBox, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -187,31 +194,31 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         cameraBox.addView(placeholder, new FrameLayout.LayoutParams(dp(150), dp(150), Gravity.CENTER));
         TextView status = new TextView(this); status.setTextColor(0xff2457a7); status.setTextSize(17);
         status.setGravity(Gravity.CENTER); status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        panel.addView(status, new LinearLayout.LayoutParams(-1, dp(66)));
-        LinearLayout controls = new LinearLayout(this); panel.addView(controls);
+        panel.addView(status, new LinearLayout.LayoutParams(-1, dp(40)));
+        LinearLayout controls = new LinearLayout(this); controls.setGravity(Gravity.CENTER); panel.addView(controls);
         LinearLayout mainActions = new LinearLayout(this); mainActions.setOrientation(LinearLayout.VERTICAL);
-        controls.addView(mainActions, new LinearLayout.LayoutParams(0, -2, 1.6f));
+        int actionWidth = Math.min(240, Math.max(120, getResources().getConfiguration().screenWidthDp - 164));
+        controls.addView(mainActions, new LinearLayout.LayoutParams(dp(actionWidth), -2));
         LinearLayout smallActions = new LinearLayout(this); smallActions.setOrientation(LinearLayout.VERTICAL);
-        controls.addView(smallActions, new LinearLayout.LayoutParams(0, -2, 1f));
+        controls.addView(smallActions, new LinearLayout.LayoutParams(dp(64), -2));
         LinearLayout top = new LinearLayout(this), bottom = new LinearLayout(this);
         smallActions.addView(top); smallActions.addView(bottom);
         Button entry = kioskButton(mainActions, R.string.kiosk_entry, 0, false);
         Button exit = kioskButton(mainActions, R.string.kiosk_exit, 0, false);
-        Button meal = kioskButton(top, R.string.kiosk_meal, R.drawable.ic_meal, true);
         Button rest = kioskButton(top, R.string.kiosk_break, R.drawable.ic_break, true);
+        Button meal = kioskButton(bottom, R.string.kiosk_meal, R.drawable.ic_meal, true);
         bottom.setGravity(Gravity.CENTER);
         android.widget.ImageButton settings = new android.widget.ImageButton(this);
         settings.setImageResource(R.drawable.ic_settings);
         settings.setContentDescription(getString(R.string.admin_access));
         settings.setBackground(new RippleDrawable(ColorStateList.valueOf(0x222457a7),surface(0xffedf3ff,0xffedf3ff,16),null));
         settings.setPadding(dp(12),dp(12),dp(12),dp(12)); settings.setElevation(dp(3));
-        LinearLayout.LayoutParams gear = new LinearLayout.LayoutParams(dp(48),dp(48)); gear.setMargins(dp(4),dp(12),dp(4),dp(4));
-        bottom.addView(settings,gear);
+        LinearLayout.LayoutParams gear = new LinearLayout.LayoutParams(dp(48),dp(48)); gear.setMargins(dp(4),0,0,dp(8));
+        header.addView(settings,gear);
         settings.setOnClickListener(v -> { if (!busy) showPin(!access.configured()); });
         Button[] actions = {entry, exit, meal, rest};
         for (Button action : actions) action.setEnabled(false);
         if (busy) { status.setText(R.string.working); return; }
-        if (!access.configured()) return;
         if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             status.setText(R.string.kiosk_camera_permission);
             cameraBox.setOnClickListener(v -> requestPermissions(new String[]{android.Manifest.permission.CAMERA}, 42));
@@ -221,6 +228,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
             }
             return;
         }
+        if (!access.configured()) return;
         androidx.camera.view.PreviewView preview = new androidx.camera.view.PreviewView(this);
         preview.setImplementationMode(androidx.camera.view.PreviewView.ImplementationMode.COMPATIBLE);
         preview.setScaleType(androidx.camera.view.PreviewView.ScaleType.FIT_CENTER);
@@ -299,14 +307,22 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
     private Button kioskButton(LinearLayout parent, int label, int icon, boolean small) {
         Button button = new Button(this); button.setGravity(Gravity.CENTER); button.setElevation(dp(3)); button.setAllCaps(false); button.setText(label);
         button.setTextSize(small ? 12 : 21); button.setTypeface(null, Typeface.BOLD);
-        button.setTextColor(small ? 0xff2457a7 : 0xffffffff);
+        if (small) button.setText("");
+        button.setTextColor(0xff172b42);
+        int fill = label == R.string.kiosk_entry ? 0xff00c879 : label == R.string.kiosk_exit ? 0xffff575d
+                : label == R.string.kiosk_break ? 0xffffbd59 : 0xffffde59;
         button.setBackground(new RippleDrawable(ColorStateList.valueOf(0x222457a7),
-                surface(small ? 0xffedf3ff : 0xff2457a7, small ? 0xffedf3ff : 0xff2457a7, 14), null));
+                surface(fill, fill, 14), null));
         button.setPadding(dp(3), dp(4), dp(3), dp(4)); button.setMinWidth(0); button.setMinimumWidth(0);
         button.setTooltipText(getString(label)); button.setContentDescription(getString(label));
-        if (icon != 0) button.setCompoundDrawablesWithIntrinsicBounds(0, icon, 0, 0);
+        if (icon != 0) {
+            android.graphics.drawable.Drawable drawable = getDrawable(icon).mutate();
+            drawable.setTint(0xff172b42); drawable.setBounds(0,0,dp(32),dp(32));
+            button.setCompoundDrawables(null, drawable, null, null);
+            button.setPadding(dp(8),dp(12),dp(8),dp(8));
+        }
         LinearLayout.LayoutParams p = parent.getOrientation() == LinearLayout.VERTICAL
-                ? new LinearLayout.LayoutParams(-1, dp(64)) : new LinearLayout.LayoutParams(0, dp(64), 1);
+                ? new LinearLayout.LayoutParams(-1, dp(56)) : new LinearLayout.LayoutParams(0, dp(56), 1);
         p.setMargins(dp(4), dp(4), dp(4), dp(4)); parent.addView(button, p); return button;
     }
     private void showPin(boolean setup) {
