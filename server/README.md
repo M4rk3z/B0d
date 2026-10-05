@@ -29,3 +29,6 @@ Dependencias fijadas en package.json y pnpm-lock.yaml. Las fotos, plantillas, to
 
 ## Sincronización de tablet
 Esquema 3 añade dispositivos, mapeos de colaboradores y marcaciones UUID inmutables. `/api/device/*` usa Bearer con hash de token persistido; endpoints web mantienen sesión/Origin y Admin para gestionar dispositivos. Migraciones transaccionales y repetibles. No se admiten credenciales de PostgreSQL en el cliente. Ver ../PRUEBA_SINCRONIZACION.md.
+
+## Catálogo de horarios web
+`/api/schedules`: acceso exclusivo Admin, GET listado, POST alta y PATCH /id edición con revisión esperada. Definiciones JSON normalizadas y versiones inmutables con actor. Esquema 6. Validación compartida en public/schedule-rules.js. No incluye aún asignaciones ni sincronización a dispositivos, ni cálculo de asistencia en servidor.

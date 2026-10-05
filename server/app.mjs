@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { randomBytes, randomUUID, createHash, scryptSync, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { deviceRoute, manageDevices, redeemPairing } from './sync.mjs';
+import { scheduleRoute } from './schedules.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
@@ -26,12 +27,13 @@ export async function migrate(pool) {
     await client.query('SELECT pg_advisory_xact_lock(80405001)');
     await client.query(await readFile(new URL('./schema.sql', import.meta.url), 'utf8'));
     const version = (await client.query('SELECT max(version) AS version FROM b0d_schema_version')).rows[0].version;
-    if (![1, 2, 3, 4, 5].includes(version)) throw new Error('Unsupported database version');
+    if (![1, 2, 3, 4, 5, 6].includes(version)) throw new Error('Unsupported database version');
     await client.query(await readFile(new URL('./users.sql', import.meta.url), 'utf8'));
     await client.query(await readFile(new URL('./sync.sql', import.meta.url), 'utf8'));
     await client.query(await readFile(new URL('./pairing.sql', import.meta.url), 'utf8'));
     await client.query('ALTER TABLE b0d_devices ADD COLUMN IF NOT EXISTS deleted BOOLEAN NOT NULL DEFAULT FALSE');
     await client.query('INSERT INTO b0d_schema_version VALUES(5) ON CONFLICT DO NOTHING');
+    await client.query(await readFile(new URL('./schedules.sql', import.meta.url), 'utf8'));
     await client.query('COMMIT');
   } catch (error) { await client.query('ROLLBACK'); throw error; }
   finally { client.release(); }
@@ -64,6 +66,7 @@ export function createApplication(pool, { origin }) {
     return { ...result.rows[0], tokenHash: hash(token) };
   }
   const assets = {
+    '/schedule-rules.js': ['schedule-rules.js', 'text/javascript; charset=utf-8'],
     '/': ['index.html', 'text/html; charset=utf-8'],
     '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
     '/styles.css': ['styles.css', 'text/css; charset=utf-8']
@@ -118,6 +121,9 @@ export function createApplication(pool, { origin }) {
       }
       const current = await session(req);
       const { tokenHash } = current;
+      if (path === '/api/schedules' || path.startsWith('/api/schedules/')) {
+        json(200, await scheduleRoute(pool, req, path, current, ['POST','PATCH'].includes(req.method) ? await body(req) : null)); return;
+      }
       if (path === '/api/devices' || path.startsWith('/api/devices/')) {
         json(200, await manageDevices(pool, req, path, current, req.method === 'POST' ? await body(req) : null)); return;
       }
