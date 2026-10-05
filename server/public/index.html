@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>B0D · Control web</title><link rel="stylesheet" href="/styles.css"><script defer src="/app.js"></script></head>
-<body><main><header><div><span class="brand">B0D</span><h1>Control web</h1><span id="identity" class="pill"></span></div><button id="logout" hidden>Salir</button></header>
+<body><main><header class="app-header"><div class="header-calendar"><time id="header-clock" class="header-clock"></time><div class="header-date"><time id="header-date"></time><span id="header-week" class="week-badge"></span></div><span id="identity" class="pill"></span></div><div class="header-right"><div class="header-brand"><div class="logo-placeholder" aria-label="Espacio para logo">Logo</div><h1>Checador</h1><small>Powered By FIMMA</small></div><button id="logout" hidden>Salir</button></div></header>
 <p id="status" role="status" aria-live="polite"></p>
 <form id="login" class="card login"><h2>Acceso</h2><label>Usuario<input name="user" autocomplete="username" required maxlength="100"></label><label>Contraseña<input name="password" type="password" autocomplete="current-password" required maxlength="256"></label><button>Entrar</button></form>
 <section id="workspace" hidden>

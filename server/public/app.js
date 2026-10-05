@@ -329,3 +329,15 @@ function workerEditor(record){
  const save=element('button','Guardar colaborador'),message=element('p','');message.setAttribute('role','status');form.append(save,message);
  form.addEventListener('submit',async event=>{event.preventDefault();save.disabled=true;try{await write('/api/workers/'+record.id,Object.fromEntries(new FormData(form)),'PATCH');await loadWorkers();$('profile').close();}catch(error){message.textContent=error.message;}finally{save.disabled=false;}});return form;
 }
+
+function isoWeek(date){
+ const day=new Date(Date.UTC(date.getFullYear(),date.getMonth(),date.getDate()));
+ day.setUTCDate(day.getUTCDate()+4-(day.getUTCDay()||7));
+ return Math.ceil((((day-new Date(Date.UTC(day.getUTCFullYear(),0,1)))/86400000)+1)/7);
+}
+function updateHeaderClock(){
+ const now=new Date();$('header-clock').textContent=new Intl.DateTimeFormat('es-MX',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}).format(now);$('header-clock').dateTime=now.toISOString();
+ $('header-date').textContent=new Intl.DateTimeFormat('es-MX',{weekday:'long',day:'numeric',month:'long',year:'numeric'}).format(now);$('header-date').dateTime=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+ $('header-week').textContent='Semana '+String(isoWeek(now)).padStart(2,'0');
+}
+updateHeaderClock();setInterval(()=>{if(!document.hidden)updateHeaderClock();},1000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)updateHeaderClock();});
