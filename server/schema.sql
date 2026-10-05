@@ -1,0 +1,26 @@
+CREATE TABLE IF NOT EXISTS b0d_schema_version (version INTEGER PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS b0d_workers (
+    id UUID PRIMARY KEY,
+    code VARCHAR(20) NOT NULL UNIQUE CHECK(code ~ '^[A-Z0-9][A-Z0-9_-]{0,19}$'),
+    name VARCHAR(100) NOT NULL CHECK(length(trim(name)) > 0),
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS b0d_sessions (
+    token_hash CHAR(64) PRIMARY KEY,
+    expires_at TIMESTAMPTZ NOT NULL
+);
+CREATE TABLE IF NOT EXISTS b0d_login_guard (
+    id INTEGER PRIMARY KEY CHECK(id = 1),
+    failures INTEGER NOT NULL DEFAULT 0,
+    locked_until TIMESTAMPTZ
+);
+INSERT INTO b0d_login_guard(id) VALUES (1) ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS b0d_audit (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    worker_id UUID NOT NULL,
+    action VARCHAR(32) NOT NULL,
+    occurred_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+INSERT INTO b0d_schema_version VALUES (1) ON CONFLICT DO NOTHING;

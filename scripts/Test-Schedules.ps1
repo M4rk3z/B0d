@@ -1,0 +1,8 @@
+$ErrorActionPreference = 'Stop'
+$projectRoot = Split-Path -Parent $PSScriptRoot
+$testOutput = Join-Path $projectRoot '.tools\schedule-tests'
+New-Item -ItemType Directory -Force -Path $testOutput | Out-Null
+& "$projectRoot\.tools\jdk\bin\javac.exe" -encoding UTF-8 -d $testOutput "$projectRoot\app\src\main\java\com\b0d\asistencia\ScheduleRules.java" "$projectRoot\tests\ScheduleRulesTest.java"
+if ($LASTEXITCODE -ne 0) { throw 'Schedule test compilation failed' }
+& "$projectRoot\.tools\jdk\bin\java.exe" -cp $testOutput com.b0d.asistencia.ScheduleRulesTest
+if ($LASTEXITCODE -ne 0) { throw 'Schedule tests failed' }

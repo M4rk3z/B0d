@@ -1,0 +1,19 @@
+{
+  "name": "b0d-control-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env start.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.8"
+  }
+}
