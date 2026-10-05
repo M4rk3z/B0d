@@ -1,5 +1,16 @@
 const $ = id => document.getElementById(id);
 let current;
+let workerRows = [];
+function showView(id, focus = false) {
+  for (const view of document.querySelectorAll('.view')) view.hidden = view.id !== id;
+  for (const button of document.querySelectorAll('[data-view]')) {
+    if (button.dataset.view === id) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+  }
+  if (focus) $(`${id}-title`).focus();
+  $('status').textContent = '';
+}
+for (const button of document.querySelectorAll('[data-view]')) button.addEventListener('click', () => showView(button.dataset.view, true));
 async function api(path, options = {}) {
   const response = await fetch(path, { credentials: 'same-origin', ...options });
   const data = await response.json();
@@ -12,11 +23,12 @@ async function api(path, options = {}) {
 const write = (path, data, method = 'POST') => api(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
 function visible(logged) {
   $('login').hidden = logged; $('workspace').hidden = !logged; $('logout').hidden = !logged;
-  if (!logged) { current = null; $('workers').replaceChildren(); $('users').replaceChildren(); $('identity').textContent = ''; $('account').reset(); }
+  if (!logged) { current = null; workerRows = []; $('profile').close(); $('profile-content').replaceChildren(); $('workers').replaceChildren(); $('users').replaceChildren(); $('identity').textContent = ''; $('account').reset(); $('worker').reset(); $('worker-search').value = ''; $('export-count').textContent = ''; }
 }
 function element(tag, text, className) { const node = document.createElement(tag); node.textContent = text; if (className) node.className = className; return node; }
 async function load() {
   current = await api('/api/me'); visible(true);
+  showView('accounts');
   const admin = current.role === 'Admin';
   $('identity').textContent = `${current.username} · ${current.role}`;
   $('worker').hidden = !admin; $('user-list').hidden = !admin;
@@ -24,13 +36,34 @@ async function load() {
   await loadWorkers(); if (admin) await loadUsers();
 }
 async function loadWorkers() {
-  const workers = await api('/api/workers'); $('workers').replaceChildren();
-  if (!workers.length) $('workers').append(element('p', 'Sin colaboradores registrados'));
+  workerRows = await api('/api/workers'); renderWorkers(); updateExportCount();
+}
+function renderWorkers() {
+  const query = $('worker-search').value.trim().toLocaleLowerCase('es');
+  const workers = workerRows.filter(worker => `${worker.name} ${worker.code}`.toLocaleLowerCase('es').includes(query));
+  $('workers').replaceChildren();
+  if (!workers.length) $('workers').append(element('p', workerRows.length ? 'Sin coincidencias' : 'Sin colaboradores registrados'));
   for (const worker of workers) {
     const card = element('article', '', 'card');
-    card.append(element('h3', worker.name), element('p', worker.code, 'muted'), element('span', worker.active ? 'Activo' : 'Inactivo', 'pill')); $('workers').append(card);
+    const open = element('button', 'Ver perfil', 'profile-button'); open.type = 'button'; open.setAttribute('aria-label', `Ver perfil de ${worker.name}`);
+    open.addEventListener('click', async () => {
+      open.disabled = true;
+      try {
+        const latest = await api('/api/workers'); const record = latest.find(row => row.id === worker.id);
+        if (!record) throw new Error('El colaborador ya no está disponible');
+        const details = document.createElement('dl');
+        for (const [title, value] of [['Nombre', record.name], ['Código', record.code], ['Estado', record.active ? 'Activo' : 'Inactivo']]) details.append(element('dt', title), element('dd', value));
+        $('profile-content').replaceChildren(details); $('profile').showModal();
+      } catch (error) { $('status').textContent = error.message; } finally { open.disabled = false; }
+    });
+    card.append(element('h3', worker.name), element('p', worker.code, 'muted'), element('span', worker.active ? 'Activo' : 'Inactivo', 'pill'), open); $('workers').append(card);
   }
 }
+$('worker-search').addEventListener('input', renderWorkers);
+$('close-profile').addEventListener('click', () => $('profile').close());
+function exportRows(rows) { const state = $('export-state').value; return rows.filter(row => state === 'all' || row.active === (state === 'active')); }
+function updateExportCount() { const count = exportRows(workerRows).length; $('export-count').textContent = `${count} colaborador${count === 1 ? '' : 'es'}`; }
+$('export-state').addEventListener('change', updateExportCount);
 async function loadUsers() {
   const users = await api('/api/users'); $('users').replaceChildren();
   for (const user of users) {
@@ -65,12 +98,16 @@ submit('worker', async data => { await write('/api/workers', data); $('worker').
 submit('account', async data => { await write('/api/users', data); $('account').reset(); if (current.role === 'Admin') await loadUsers(); $('status').textContent = 'Usuario creado'; });
 $('logout').addEventListener('click', async () => { try { await write('/api/logout', {}); visible(false); } catch (error) { $('status').textContent = error.message; } });
 $('download').addEventListener('click', async () => {
+  $('download').disabled = true; $('status').textContent = '';
   try {
-    const rows = await api('/api/workers');
+    workerRows = await api('/api/workers'); updateExportCount(); renderWorkers();
+    const rows = exportRows(workerRows);
+    if (!rows.length) throw new Error('No hay colaboradores para descargar con este filtro');
     const cell = value => { let text = String(value); if (/^[\s]*[=+@-]/u.test(text)) text = "'" + text; return '"' + text.replaceAll('"', '""') + '"'; };
     const csv = '\ufeff' + [['Código', 'Nombre', 'Estado'], ...rows.map(row => [row.code, row.name, row.active ? 'Activo' : 'Inactivo'])].map(row => row.map(cell).join(',')).join('\r\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a'); link.href = url; link.download = 'B0d-colaboradores.csv'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-  } catch (error) { $('status').textContent = error.message; }
+    $('status').textContent = 'Descarga generada';
+  } catch (error) { $('status').textContent = error.message; } finally { $('download').disabled = false; }
 });
 load().catch(error => { visible(false); if (error.message !== 'Inicia sesión' && error.message !== 'La sesión terminó') $('status').textContent = error.message; });

@@ -142,3 +142,6 @@ Cierre alpha4: APK generada, compilación/lint correctos (0 errores/26 avisos) y
 
 ## Actualización web: cuentas y roles — 2026-10-04
 Implementado control Admin/User con migración conservadora a esquema 2. Admin gestiona cuentas y colaboradores; User crea otras cuentas User y descarga CSV de colaboradores. Cuenta inicial de Render conservada como Admin. Pruebas locales aprobadas; verificar despliegue en Render y acceso con ambos roles. La tablet sigue independiente.
+
+## Interfaces web — 2026-10-04
+Tres secciones en la misma pantalla: Usuarios (alta y administración según rol), Colaboradores (búsqueda y perfil con nombre/código/estado), Descargas (CSV de colaboradores con filtro activo/inactivo/todos). El perfil consulta datos vigentes al abrir. Se conservan permisos Admin/User. Sin cambios de esquema ni conexión a tablet. Pruebas existentes: 13 aprobadas; sintaxis JS y diff verificados. Pendiente validación visual en navegador y despliegue Render.
