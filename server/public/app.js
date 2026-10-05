@@ -144,7 +144,7 @@ async function loadDevices() {
   }
 }
 submit('device-form', async data => {
-  const device = await write('/api/devices', data); $('device-token').value = device.token; $('device-secret').hidden = false; $('device-form').reset(); await loadDevices();
+  const device = await write('/api/devices', data); $('device-token').value = device.code.slice(0,4) + ' ' + device.code.slice(4); $('device-secret').hidden = false; $('device-form').reset(); await loadDevices();
 });
 const kindLabel = row => ({ IN: 'Entrada', OUT: 'Salida', BREAK_START: row.action === 'MEAL' ? 'Inicio de comida' : 'Inicio de descanso', BREAK_END: row.action === 'MEAL' ? 'Fin de comida' : 'Fin de descanso' })[row.kind] || row.kind;
 async function loadPunches(reset = true) {

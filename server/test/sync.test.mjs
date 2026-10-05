@@ -17,7 +17,10 @@ test('Sincronización autorizada, durable e idempotente', async t => {
  try {
   const login=await request('/api/login','POST',{user:'admin',password:'admin-password-123'}); cookie=login.headers.get('set-cookie').split(';')[0];
   await t.test('Admin vincula sin exponer credencial almacenada',async()=>{
-   const res=await request('/api/devices','POST',{name:'Fire HD 10'}); assert.equal(res.status,200); const device=await res.json(); token=device.token; deviceId=device.id;
+   const res=await request('/api/devices','POST',{name:'Fire HD 10'}); assert.equal(res.status,200); const device=await res.json(); deviceId=device.id;
+   assert.match(device.code,/^\d{8}$/); assert.equal(device.token,undefined);
+   const paired=await request('/api/device/pair','POST',{code:device.code},true); assert.equal(paired.status,200); token=(await paired.json()).token;
+   assert.equal((await request('/api/device/pair','POST',{code:device.code},true)).status,401);
    const rows=await (await request('/api/devices')).json(); assert.equal(rows[0].token,undefined); assert.equal(rows[0].token_hash,undefined);
    assert.equal((await fetch(base+'/api/device/workers')).status,401);
    assert.equal((await request('/api/workers','GET',undefined,true)).status,401);
@@ -59,6 +62,13 @@ test('Sincronización autorizada, durable e idempotente', async t => {
    await request(`/api/devices/${deviceId}`,'DELETE',{});
    assert.equal((await request('/api/device/punch','POST',event,true)).status,401);
    await migrate(pool); assert.equal((await db.query('SELECT count(*) AS n FROM b0d_punches')).rows[0].n,1);
+  });
+  await t.test('código caducado y límite persistente de intentos',async()=>{
+   const device=await (await request('/api/devices','POST',{name:'Expired'})).json();
+   await db.query("UPDATE b0d_pairing SET expires_at=now()-interval '1 second'");
+   assert.equal((await request('/api/device/pair','POST',{code:device.code},true)).status,401);
+   await db.query('UPDATE b0d_pair_guard SET attempts=5,window_start=now()');
+   assert.equal((await request('/api/device/pair','POST',{code:'00000000'},true)).status,429);
   });
  } finally { server.closeAllConnections(); await new Promise(resolve=>server.close(resolve)); await db.close(); }
 });

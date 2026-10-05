@@ -152,3 +152,6 @@ Validación final: 21 tests Node y 1 prueba SQLite aprobados; APK compilada, lin
 
 ## APK 0.5.0-alpha2 — 2026-10-04
 Pantalla inicial reorganizada según referencia: engrane superior, cámara amplia, controles centrados, entrada verde/salida roja e iconos ámbar/amarillo para descanso/comida. Estado cloud en configuración. Cámara se solicita automáticamente en primera apertura sin permiso, sin repetir diálogo tras rechazo. versionCode 13. Compilación y lint aprobados; pendiente comprobación visual y flujo de permisos en Fire HD 10. Actualizar sin desinstalar.
+
+## Vinculación sencilla — 0.5.0-alpha3
+La web ahora genera un código de 8 dígitos (agrupado 1234 5678), válido 10 minutos y de un solo uso. La APK canjea el código por una credencial persistente cifrada; no hace falta copiar la clave larga. Cinco canjes por minuto como límite global persistente en esta instalación. Esquema PostgreSQL 4. Vínculos previos se conservan. Si la respuesta de canje se pierde, generar otro código y revocar el vínculo anterior. APK versionCode 14. Pruebas servidor: 22 aprobadas. Pendiente prueba real del código en Kindle.

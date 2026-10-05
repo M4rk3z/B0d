@@ -32,3 +32,6 @@ PostgreSQL en Render es la base central. Web y APK acceden a través de la misma
 
 ## Verificación automatizada
 Pruebas HTTP contra PostgreSQL embebido: autorización, importación repetida, colisión de códigos, eventos idempotentes, datos inválidos, catálogo compartido, acceso User y revocación. Prueba SQLite de migración conservando marcaciones/biometría y recibos persistentes. Compilación APK y Android lint.
+
+## Actualización alpha3: código corto
+Sustituye la clave manual del procedimiento anterior: en Tablet pulsa Generar código y escribe los 8 dígitos en la APK alpha3. Vence a los 10 minutos y admite un solo uso; la vinculación permanece después. Si el canje se interrumpe, revoca ese dispositivo y genera otro código. Las vinculaciones existentes siguen funcionando sin cambios.

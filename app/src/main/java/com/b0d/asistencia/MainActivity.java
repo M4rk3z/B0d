@@ -469,10 +469,10 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         screen(R.string.admin_title);
         text("Conexión con Render", 23);
         cloudStatus = text(new CloudSync(this).status(), 16);
-        text("La clave se genera en la web, en Tablet. Los registros locales pendientes se enviarán al vincular.", 15);
+        text("Genera el código en la web, en Tablet. Válido por 10 minutos.", 15);
         EditText credential = new EditText(this);
-        credential.setHint("Clave de vinculación");
-        credential.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        credential.setHint("Código de 8 dígitos");
+        credential.setInputType(InputType.TYPE_CLASS_NUMBER);
         credential.setSingleLine(true); panel.addView(credential, params());
         Button link = button(R.string.back_admin, () -> {}); link.setText("Vincular y sincronizar");
         link.setOnClickListener(v -> {

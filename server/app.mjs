@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { randomBytes, randomUUID, createHash, scryptSync, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { deviceRoute, manageDevices } from './sync.mjs';
+import { deviceRoute, manageDevices, redeemPairing } from './sync.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
@@ -26,9 +26,10 @@ export async function migrate(pool) {
     await client.query('SELECT pg_advisory_xact_lock(80405001)');
     await client.query(await readFile(new URL('./schema.sql', import.meta.url), 'utf8'));
     const version = (await client.query('SELECT max(version) AS version FROM b0d_schema_version')).rows[0].version;
-    if (![1, 2, 3].includes(version)) throw new Error('Unsupported database version');
+    if (![1, 2, 3, 4].includes(version)) throw new Error('Unsupported database version');
     await client.query(await readFile(new URL('./users.sql', import.meta.url), 'utf8'));
     await client.query(await readFile(new URL('./sync.sql', import.meta.url), 'utf8'));
+    await client.query(await readFile(new URL('./pairing.sql', import.meta.url), 'utf8'));
     await client.query('COMMIT');
   } catch (error) { await client.query('ROLLBACK'); throw error; }
   finally { client.release(); }
@@ -77,6 +78,9 @@ export function createApplication(pool, { origin }) {
         res.end(await readFile(new URL(`./public/${file}`, import.meta.url))); return;
       }
       if (req.method === 'GET' && path === '/healthz') { await pool.query('SELECT 1'); json(200, { status: 'ok', stage: 'tablet-sync-v1' }); return; }
+      if (path === '/api/device/pair' && req.method === 'POST') {
+        json(200, await redeemPairing(pool, await body(req))); return;
+      }
       if (path.startsWith('/api/device/')) {
         json(200, await deviceRoute(pool, req, path, req.method === 'POST' ? await body(req) : null)); return;
       }

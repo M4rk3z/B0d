@@ -38,8 +38,13 @@ final class CloudSync {
     private String token() throws Exception { return new String(FacePhotoCipher.decrypt(key(), "cloud", Base64.decode(prefs.getString("credential", ""), Base64.NO_WRAP)), StandardCharsets.UTF_8); }
     void link(String value) throws Exception {
         String token = value.trim();
+        JSONObject remote = null;
+        if (token.replace(" ", "").replace("-", "").matches("[0-9]{8}")) {
+            remote = request("/api/device/pair", new JSONObject().put("code", token), "");
+            token = remote.getString("token");
+        }
         if (!token.matches("[a-f0-9]{64}")) throw new Exception("Copia la clave de vinculación de la web");
-        JSONObject remote = request("/api/device/workers", null, token);
+        if (remote == null) remote = request("/api/device/workers", null, token);
         String encrypted = Base64.encodeToString(FacePhotoCipher.encrypt(key(), "cloud", token.getBytes(StandardCharsets.UTF_8)), Base64.NO_WRAP);
         // A replacement credential may refer to another device; rebuild mappings, never remove punches.
         try (WorkersDb helper = new WorkersDb(context)) {
@@ -100,7 +105,7 @@ final class CloudSync {
     private JSONObject request(String path, JSONObject data, String token) throws Exception {
         HttpsURLConnection connection = (HttpsURLConnection) new URL(BASE + path).openConnection();
         connection.setInstanceFollowRedirects(false); connection.setConnectTimeout(20000); connection.setReadTimeout(70000);
-        connection.setRequestProperty("Authorization", "Bearer " + token);
+        if (!token.isEmpty()) connection.setRequestProperty("Authorization", "Bearer " + token);
         try {
             if (data != null) { connection.setRequestMethod("POST"); connection.setDoOutput(true); connection.setRequestProperty("Content-Type", "application/json"); try (java.io.OutputStream out = connection.getOutputStream()) { out.write(data.toString().getBytes(StandardCharsets.UTF_8)); } }
             int status = connection.getResponseCode(); InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();

@@ -1,4 +1,4 @@
-import { randomUUID, randomBytes, createHash } from 'node:crypto';
+import { randomUUID, randomBytes, randomInt, createHash } from 'node:crypto';
 const digest = value => createHash('sha256').update(value).digest('hex');
 function check(ok, status, message) { if (!ok) { const error = new Error(message); error.status = status; throw error; } }
 const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
@@ -45,10 +45,42 @@ export async function manageDevices(pool, req, path, current, input) {
  if (path === '/api/devices' && req.method === 'POST') {
   check(typeof input?.name === 'string' && input.name.trim().length > 0 && input.name.length <= 80, 400, 'Nombre requerido (máximo 80 caracteres)');
   const token = randomBytes(32).toString('hex'); const id = randomUUID();
-  await pool.query('INSERT INTO b0d_devices(id,name,token_hash) VALUES($1,$2,$3)', [id,input.name.trim(),digest(token)]);
-  return { id, token };
+  const code = String(randomInt(0,100000000)).padStart(8,'0');
+  const client = await pool.connect();
+  try {
+   await client.query('BEGIN');
+   await client.query('DELETE FROM b0d_pairing WHERE expires_at<=now()');
+   await client.query('INSERT INTO b0d_devices(id,name,token_hash) VALUES($1,$2,$3)', [id,input.name.trim(),digest(token)]);
+   await client.query("INSERT INTO b0d_pairing VALUES($1,$2,now()+interval '10 minutes')", [digest(code),id]);
+   await client.query('COMMIT');
+  } catch(error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+  return { id, code, expiresIn: 600 };
  }
  const id = path.slice('/api/devices/'.length);
  check(req.method === 'DELETE' && uuid(id), 400, 'Solicitud inválida');
  await pool.query('UPDATE b0d_devices SET active=false WHERE id=$1', [id]); return { ok: true };
+}
+export async function redeemPairing(pool, input) {
+ const code = typeof input?.code === 'string' ? input.code.replace(/[ -]/g,'') : '';
+ check(/^\d{8}$/.test(code),400,'Escribe el código de 8 dígitos');
+ const client = await pool.connect(); let result, limited = false;
+ try {
+  await client.query('BEGIN');
+  const guard = (await client.query("SELECT *,window_start<=now()-interval '1 minute' AS expired FROM b0d_pair_guard WHERE id=1 FOR UPDATE")).rows[0];
+  if (!guard.expired && guard.attempts>=5) limited = true;
+  else {
+   await client.query('UPDATE b0d_pair_guard SET attempts=$1,window_start=CASE WHEN $2 THEN now() ELSE window_start END WHERE id=1', [guard.expired?1:guard.attempts+1,guard.expired]);
+   const pair = (await client.query('SELECT p.device_id FROM b0d_pairing p JOIN b0d_devices d ON d.id=p.device_id WHERE p.code_hash=$1 AND p.expires_at>now() AND d.active FOR UPDATE OF p,d',[digest(code)])).rows[0];
+   if (pair) {
+    const token=randomBytes(32).toString('hex');
+    await client.query('UPDATE b0d_devices SET token_hash=$1 WHERE id=$2',[digest(token),pair.device_id]);
+    await client.query('DELETE FROM b0d_pairing WHERE code_hash=$1',[digest(code)]);
+    result={token,deviceId:pair.device_id};
+   }
+  }
+  await client.query('COMMIT');
+ } catch(error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+ check(!limited,429,'Espera un minuto antes de volver a intentar');
+ check(result,401,'Código inválido, vencido o ya utilizado. Genera uno nuevo en la web');
+ return result;
 }
