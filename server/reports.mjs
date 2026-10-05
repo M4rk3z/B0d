@@ -41,7 +41,7 @@ export async function loadReport(pool,params){
  if(rows.length>50000)fail('Demasiados registros. Reduce el rango de fechas');
  return {type,from,to,note:type==='regular'?regularNote:'',rows:reportRows(rows,from,to)};
 }
-export const headers=type=>type==='regular'?['Código','Usuario','Entrada','Salida calculada*','Total Horas Trabajadas']:['Código','Usuario','Entrada','Salida','Total Horas','Inicio Hrs Extra','Fin Hrs Extra','Total Hrs Extra','Total Horas Trabajadas'];
+export const headers=type=>type==='regular'?['Código','Usuario','Entrada','Salida*','Total Horas Trabajadas']:['Código','Usuario','Entrada','Salida','Total Horas','Inicio Hrs Extra','Fin Hrs Extra','Total Hrs Extra','Total Horas Trabajadas'];
 export const title=type=>type==='regular'?'Marcaje Regular':'Marcaje Total';
 const clock=(time,zone)=>time===null?'—':new Intl.DateTimeFormat('es-MX',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:true}).format(new Date(time));
 const hours=n=>n===null?'N/D':`${Math.floor(n/3600000)}:${String(Math.floor(n/60000)%60).padStart(2,'0')}`;
