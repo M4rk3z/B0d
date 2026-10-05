@@ -193,14 +193,16 @@ const scheduleRules=import('/schedule-rules.js');
 const duration=n=>`${Math.floor(n/60)} h ${n%60} min`;
 const clock12=value=>{const [h,m]=value.split(':').map(Number);return `${h%12||12}:${String(m).padStart(2,'0')} ${h<12?'AM':'PM'}`;};
 function timeControl(value,label){
- const box=element('label',label,'time12'),parts=value.split(':').map(Number);
- const fields=element('span','','time12-fields');
- for(const [name,values,selected] of [['hour',Array.from({length:12},(_,i)=>String(i+1)),String(parts[0]%12||12)],['minute',Array.from({length:60},(_,i)=>String(i).padStart(2,'0')),String(parts[1]).padStart(2,'0')],['period',['AM','PM'],parts[0]<12?'AM':'PM']]){
-  const select=document.createElement('select');select.dataset.part=name;select.setAttribute('aria-label',`${label} ${name==='hour'?'hora':name==='minute'?'minuto':'AM o PM'}`);
-  for(const v of values){const option=element('option',v);option.value=v;select.append(option);}select.value=selected;fields.append(select);
- }box.append(fields);return box;
+ const box=element('label',label,'time12');
+ const input=document.createElement('input');input.type='text';input.dataset.part='time';input.value=clock12(value);input.required=true;input.maxLength=8;input.placeholder='08:00 AM';input.autocomplete='off';input.spellcheck=false;
+ input.pattern='(0?[1-9]|1[0-2]):[0-5][0-9] ?[AaPp][Mm]';input.title='Escribe la hora, por ejemplo 08:30 AM o 05:45 PM';input.setAttribute('aria-label',label+' (hora AM/PM)');
+ input.addEventListener('blur',()=>{input.value=input.value.trim().toUpperCase();});box.append(input);return box;
 }
-function readTime(box){let h=Number(box.querySelector('[data-part=hour]').value)%12;if(box.querySelector('[data-part=period]').value==='PM')h+=12;return String(h).padStart(2,'0')+':'+box.querySelector('[data-part=minute]').value;}
+function readTime(box){
+ const match=box.querySelector('[data-part=time]').value.trim().match(/^(0?[1-9]|1[0-2]):([0-5][0-9]) ?(AM|PM)$/i);
+ if(!match)throw new Error('Escribe una hora válida, por ejemplo 08:30 AM');
+ const hour=Number(match[1])%12+(match[3].toUpperCase()==='PM'?12:0);return String(hour).padStart(2,'0')+':'+match[2];
+}
 function readSchedule(){return {name:$('schedule-name').value,zone:$('schedule-zone').value,markBreaks:$('schedule-mark').checked,days:weekDraft.filter(d=>d.selected).map(d=>{if(!d.configured)throw new Error(`Configura ${dayNames[d.weekday-1]}`);return {weekday:d.weekday,...d.value};})};}
 async function schedulePreview(){try{const {validateSchedule}=await scheduleRules;const result=validateSchedule(readSchedule());$('schedule-summary').textContent=`${duration(result.weeklyMinutes)} efectivas / semana`;}catch(error){$('schedule-summary').textContent=error.message;}}
 function scheduleChanged(){scheduleDirty=true;schedulePreview();}
@@ -223,8 +225,9 @@ function openDay(day){editingDay=day;const draft=weekDraft[day-1];const value=dr
 $('day-add-break').addEventListener('click',()=>addDialogBreak());
 $('day-cancel').addEventListener('click',()=>$('day-dialog').close());
 $('day-form').addEventListener('submit',async event=>{
- event.preventDefault();const times=$('day-times').children;const value={start:readTime(times[0]),end:readTime(times[1]),breaks:[...$('day-breaks').children].map(row=>({kind:row.querySelector('select').value,start:readTime(row.querySelectorAll('.time12')[0]),end:readTime(row.querySelectorAll('.time12')[1])}))};
+ event.preventDefault();
  try{
+ const times=$('day-times').children;const value={start:readTime(times[0]),end:readTime(times[1]),breaks:[...$('day-breaks').children].map(row=>({kind:row.querySelector('select').value,start:readTime(row.querySelectorAll('.time12')[0]),end:readTime(row.querySelectorAll('.time12')[1])}))};
   const {validateSchedule}=await scheduleRules;const changed=structuredClone(weekDraft);
   for(const d of changed)if(d.weekday===editingDay||($('day-copy').checked&&d.selected)){d.value=structuredClone(value);d.configured=true;}
   validateSchedule({name:$('schedule-name').value.trim()||'Horario',zone:$('schedule-zone').value,markBreaks:$('schedule-mark').checked,days:changed.filter(d=>d.selected&&d.configured).map(d=>({weekday:d.weekday,...d.value}))});
