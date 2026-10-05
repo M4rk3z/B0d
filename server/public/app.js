@@ -31,7 +31,7 @@ const write = (path, data, method = 'POST') => api(path, { method, headers: { 'C
     if (!logged) { $('report-preview').replaceChildren(); $('report-status').textContent = ''; }
     if (!logged) { $('password-dialog').close();finishConfirm(false);scheduleRows=[];scheduleId=null;scheduleRevision=null;scheduleDirty=false;weekDraft=[];$('day-dialog').close();$('schedule-form').reset();$('schedule-days').replaceChildren();$('schedule-list').replaceChildren(); }
   if (!logged) { $('device-token').value = ''; $('device-secret').hidden = true; $('devices').replaceChildren(); $('punches').replaceChildren(); }
-  $('login').hidden = logged; $('workspace').hidden = !logged; $('logout').hidden = !logged;
+  $('login').hidden = logged; $('workspace').hidden = !logged; $('logout').hidden = !logged; $('identity').hidden = !logged;
   if (!logged) { current = null; workerRows = []; $('profile').close(); $('profile-content').replaceChildren(); $('workers').replaceChildren(); $('users').replaceChildren(); $('identity').textContent = ''; $('account').reset(); $('worker').reset(); $('worker-search').value = ''; $('export-count').textContent = ''; }
 }
 function element(tag, text, className) { const node = document.createElement(tag); node.textContent = text; if (className) node.className = className; return node; }
