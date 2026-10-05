@@ -300,7 +300,7 @@ async function runReport(format){
    const labels=document.createElement('tr');for(const label of data.headers)labels.append(element('th',label));head.append(labels);table.append(head,body);
    data.table.forEach((cells,index)=>{const tr=document.createElement('tr');for(const cell of cells)tr.append(element('td',cell));if(data.rows[index].issues.length){tr.className='report-issue';tr.title=data.rows[index].issues.join('; ');}body.append(tr);});$('report-preview').replaceChildren(table);
    const notes=data.rows.filter(row=>row.issues.length);if(notes.length){const details=document.createElement('details');details.append(element('summary',`Observaciones (${notes.length})`));for(const row of notes)details.append(element('p',`${row.date} · ${row.code}: ${row.issues.join('; ')}`));$('report-preview').append(details);}
-   $('report-status').textContent=`${data.rows.length} jornadas · Duraciones en horas:minutos`;
+   $('report-status').textContent=`${data.rows.length} jornadas · Duraciones en horas:minutos${data.note ? " · "+data.note : ""}`;
   }else{
    const response=await fetch('/api/reports?'+reportParams(format),{credentials:'same-origin'});if(!response.ok){const data=await response.json();if(response.status===401)visible(false);throw new Error(data.error||'No se pudo generar el archivo');}
    const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=url;link.download=`Marcaje-${$('report-type').value==='regular'?'Regular':'Total'}-${$('report-from').value}-${$('report-to').value}.${format}`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);$('report-status').textContent='Archivo generado';

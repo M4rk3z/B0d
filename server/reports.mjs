@@ -15,8 +15,9 @@ export function calculateDay(events,context){
  const ordinary=plan?Math.min(plan.target,effective):null,extra=plan?Math.max(0,effective-plan.target):null;
  let threshold=null;if(extra>0){let remaining=ordinary;for(const [a,b]of spans){if(remaining<b-a){threshold=a+remaining;break;}remaining-=b-a;}}
  if(context&&!plan)issues.push('Sin horario asignado: no se calculan horas extras');
+ let capEnd=null,remainingCap=8*3600000;for(const [a,b]of spans){if(remainingCap<=b-a){capEnd=a+remainingCap;break;}remainingCap-=b-a;}
  const first=events.find(e=>e.kind==='IN'),last=[...events].reverse().find(e=>e.kind==='OUT');
- return {entry:first?Number(first.occurred_at):null,exit:last?Number(last.occurred_at):null,effective:valid?effective:null,ordinary:valid?ordinary:null,extra:valid?extra:null,extraStart:valid?threshold:null,regularEnd:valid?(threshold||Number(last?.occurred_at)||null):null,issues};
+ return {capEnd:valid?capEnd:null,entry:first?Number(first.occurred_at):null,exit:last?Number(last.occurred_at):null,effective:valid?effective:null,ordinary:valid?ordinary:null,extra:valid?extra:null,extraStart:valid?threshold:null,regularEnd:valid?(threshold||Number(last?.occurred_at)||null):null,issues};
 }
 export function reportRows(punches,from,to){
  const workers=new Map();for(const p of punches){if(!workers.has(p.worker_id))workers.set(p.worker_id,[]);workers.get(p.worker_id).push(p);}
@@ -38,16 +39,27 @@ export async function loadReport(pool,params){
  if(to<from || Date.parse(to)-Date.parse(from)>92*86400000)fail('Elige un rango de hasta 93 días');
  const rows=(await pool.query('SELECT p.*,c.context FROM b0d_punches p LEFT JOIN b0d_shift_contexts c ON c.event_id=p.event_id WHERE p.occurred_at >= $1 AND p.occurred_at < $2 ORDER BY p.worker_id,p.occurred_at,p.event_id LIMIT 50001',[Date.parse(from)-2*86400000,Date.parse(to)+3*86400000])).rows;
  if(rows.length>50000)fail('Demasiados registros. Reduce el rango de fechas');
- return {type,from,to,rows:reportRows(rows,from,to)};
+ return {type,from,to,note:type==='regular'?regularNote:'',rows:reportRows(rows,from,to)};
 }
-export const headers=type=>type==='regular'?['Código','Usuario','Entrada','Salida','Total Horas Trabajadas']:['Código','Usuario','Entrada','Salida','Total Horas','Inicio Hrs Extra','Fin Hrs Extra','Total Hrs Extra','Total Horas Trabajadas'];
+export const headers=type=>type==='regular'?['Código','Usuario','Entrada','Salida calculada*','Total Horas Trabajadas']:['Código','Usuario','Entrada','Salida','Total Horas','Inicio Hrs Extra','Fin Hrs Extra','Total Hrs Extra','Total Horas Trabajadas'];
 export const title=type=>type==='regular'?'Marcaje Regular':'Marcaje Total';
 const clock=(time,zone)=>time===null?'—':new Intl.DateTimeFormat('es-MX',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:true}).format(new Date(time));
 const hours=n=>n===null?'N/D':`${Math.floor(n/3600000)}:${String(Math.floor(n/60000)%60).padStart(2,'0')}`;
-export function cells(row,type,numeric=false){const duration=n=>numeric&&n!==null?n/86400000:hours(n);return type==='regular'?[row.code,row.name,clock(row.entry,row.zone),clock(row.exit,row.zone),duration(row.effective)]:[row.code,row.name,clock(row.entry,row.zone),clock(row.regularEnd,row.zone),duration(row.ordinary),clock(row.extraStart,row.zone),clock(row.extra>0?row.exit:null,row.zone),duration(row.extra),duration(row.effective)];}
+export const regularNote='* Máximo 8 h; salida aproximada con variación de 1 a 5 min en jornadas mayores a 8 h. Original en Marcaje Total.';
+export function regularValues(row){
+ if(row.effective===null)return {exit:row.exit,total:null};
+ if(row.effective<=8*3600000)return {exit:row.exit,total:row.effective};
+ if(row.capEnd===null || row.capEnd===undefined)return {exit:null,total:null};
+ // Stable presentation-only approximation; repeated exports never change punch records.
+ let hash=0;for(const c of `${row.code}|${row.date}`)hash=(hash*31+c.charCodeAt(0))>>>0;
+ const delta=(hash%5+1)*60000;let offset=hash%2?delta:-delta;
+ if(row.capEnd+offset>row.exit)offset=-delta;
+ return {exit:row.capEnd+offset,total:8*3600000};
+}
+export function cells(row,type,numeric=false){const regular=regularValues(row);const duration=n=>numeric&&n!==null?n/86400000:hours(n);return type==='regular'?[row.code,row.name,clock(row.entry,row.zone),clock(regular.exit,row.zone),duration(regular.total)]:[row.code,row.name,clock(row.entry,row.zone),clock(row.regularEnd,row.zone),duration(row.ordinary),clock(row.extraStart,row.zone),clock(row.extra>0?row.exit:null,row.zone),duration(row.extra),duration(row.effective)];}
 export function excelReport(report){
  const wb=XLSX.utils.book_new();const width=headers(report.type).length;const groups=report.type==='total'?['','','Horario Regular','','','Horas Extras','','','Horas regulares + extras']:[];
- const data=[[title(report.type)],[`${report.from} a ${report.to} · Una fila por colaborador y jornada`],groups,headers(report.type),...report.rows.map(row=>cells(row,report.type,true))];const sheet=XLSX.utils.aoa_to_sheet(data);
+ const data=[[title(report.type)],[`${report.from} a ${report.to} · ${report.type==='regular'?regularNote:'Una fila por colaborador y jornada'}`],groups,headers(report.type),...report.rows.map(row=>cells(row,report.type,true))];const sheet=XLSX.utils.aoa_to_sheet(data);
  sheet['!merges']=[{s:{r:0,c:0},e:{r:0,c:width-1}},{s:{r:1,c:0},e:{r:1,c:width-1}}];if(report.type==='total')sheet['!merges'].push({s:{r:2,c:2},e:{r:2,c:4}},{s:{r:2,c:5},e:{r:2,c:7}});
  sheet['!cols']=headers(report.type).map((_,i)=>({wch:i===1?30:([2,3,5,6].includes(i)?26:20)}));
  for(let r=4;r<data.length;r++)for(const c of report.type==='regular'?[4]:[4,7,8]){const cell=sheet[XLSX.utils.encode_cell({r,c})];if(cell?.t==='n')cell.z='[h]:mm';}
@@ -61,7 +73,7 @@ export function pdfReport(report){return new Promise((resolve,reject)=>{
  // Nine columns share the printable width; keep all values within page bounds.
  if(report.type==='total'){const raw=[48,118,100,100,64,100,100,68,88],sum=raw.reduce((a,b)=>a+b,0);raw.forEach((v,i)=>widths[i]=v*available/sum);}
  let y=0;const draw=(values,fill,bold=false,height=38)=>{let x=28;values.forEach((value,i)=>{doc.rect(x,y,widths[i],height).fillAndStroke(fill,'#dce4ee');doc.fillColor('#20334d').font(bold?'Helvetica-Bold':'Helvetica').fontSize(bold?8:7.5).text(String(value),x+5,y+6,{width:widths[i]-10,height:height-10,ellipsis:true});x+=widths[i];});y+=height;};
- const heading=()=>{doc.font('Helvetica-Bold').fontSize(18).fillColor('#2457a7').text(title(report.type),28,24);doc.font('Helvetica').fontSize(9).fillColor('#526278').text(`${report.from} a ${report.to} | Duraciones en horas:minutos`,28,49);y=72;
+ const heading=()=>{doc.font('Helvetica-Bold').fontSize(18).fillColor('#2457a7').text(title(report.type),28,24);doc.font('Helvetica').fontSize(9).fillColor('#526278').text(`${report.from} a ${report.to} | ${report.type==='regular'?regularNote:'Duraciones en horas:minutos'}`,28,49);y=72;
   if(report.type==='total'){let x=28+widths[0]+widths[1];for(const [label,start,end,color]of [['Horario Regular',2,5,'#fff0dc'],['Horas Extras',5,8,'#e5eeff']]){const w=widths.slice(start,end).reduce((a,b)=>a+b,0);doc.rect(x,y,w,21).fill(color);doc.fillColor('#20334d').fontSize(9).text(label,x+5,y+6,{width:w-10,align:'center'});x+=w;}y+=21;}
   draw(headers(report.type),'#edf2f8',true,34);
  };

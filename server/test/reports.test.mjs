@@ -1,10 +1,20 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import XLSX from 'xlsx';
-import {calculateDay,reportRows,excelReport,pdfReport,loadReport} from '../reports.mjs';
+import {calculateDay,reportRows,excelReport,pdfReport,loadReport,regularValues,cells} from '../reports.mjs';
 const H=3600000, base=Date.parse('2026-10-01T00:00:00Z');
 const context={date:'2026-10-01',zone:'UTC',schedule:'v1',plan:{start:base+8*H,end:base+17*H,target:8*H,marked:false,rests:[[base+13*H,base+14*H]]}};
 const events=(list)=>list.map(([kind,h],i)=>({kind,occurred_at:base+h*H,event_id:String(i),worker_id:'w',worker_code:'001',worker_name:'Persona',zone_id:'UTC',context:kind==='IN'?context:null}));
+test('Regular limita 8 h, respeta descansos y aproxima salida sin alterar Total',()=>{
+ const row=reportRows(events([['IN',8],['OUT',18]]),'2026-10-01','2026-10-01')[0];
+ const regular=regularValues(row),difference=Math.abs(regular.exit-(base+17*H));
+ assert.equal(regular.total,8*H);assert.ok(difference>=60000&&difference<=300000);
+ assert.deepEqual(regularValues(row),regular);assert.equal(row.exit,base+18*H);assert.equal(row.effective,9*H);
+ assert.equal(cells(row,'regular')[4],'8:00');assert.equal(cells(row,'total')[8],'9:00');
+ const short=reportRows(events([['IN',8],['OUT',16]]),'2026-10-01','2026-10-01')[0];
+ assert.deepEqual(regularValues(short),{exit:base+16*H,total:7*H});
+ assert.equal(regularValues({...row,effective:null}).total,null);
+});
 test('Descuenta comida y conserva ocho horas efectivas',()=>{
  const row=calculateDay(events([['IN',8],['OUT',17]]),context);
  assert.equal(row.effective,8*H);assert.equal(row.extra,0);assert.equal(row.ordinary,8*H);
