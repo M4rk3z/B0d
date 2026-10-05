@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { randomBytes, randomUUID, createHash, scryptSync, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { deviceRoute, manageDevices } from './sync.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
@@ -25,8 +26,9 @@ export async function migrate(pool) {
     await client.query('SELECT pg_advisory_xact_lock(80405001)');
     await client.query(await readFile(new URL('./schema.sql', import.meta.url), 'utf8'));
     const version = (await client.query('SELECT max(version) AS version FROM b0d_schema_version')).rows[0].version;
-    if (![1, 2].includes(version)) throw new Error('Unsupported database version');
+    if (![1, 2, 3].includes(version)) throw new Error('Unsupported database version');
     await client.query(await readFile(new URL('./users.sql', import.meta.url), 'utf8'));
+    await client.query(await readFile(new URL('./sync.sql', import.meta.url), 'utf8'));
     await client.query('COMMIT');
   } catch (error) { await client.query('ROLLBACK'); throw error; }
   finally { client.release(); }
@@ -74,7 +76,10 @@ export function createApplication(pool, { origin }) {
         const [file, type] = assets[path]; res.setHeader('Content-Type', type);
         res.end(await readFile(new URL(`./public/${file}`, import.meta.url))); return;
       }
-      if (req.method === 'GET' && path === '/healthz') { await pool.query('SELECT 1'); json(200, { status: 'ok', stage: 'cloud-foundation' }); return; }
+      if (req.method === 'GET' && path === '/healthz') { await pool.query('SELECT 1'); json(200, { status: 'ok', stage: 'tablet-sync-v1' }); return; }
+      if (path.startsWith('/api/device/')) {
+        json(200, await deviceRoute(pool, req, path, req.method === 'POST' ? await body(req) : null)); return;
+      }
       if (!['GET', 'HEAD'].includes(req.method) && req.headers.origin !== origin) throw new HttpError(403, 'Origen no permitido');
       if (req.method === 'POST' && path === '/api/login') {
         const input = await body(req);
@@ -107,6 +112,16 @@ export function createApplication(pool, { origin }) {
       }
       const current = await session(req);
       const { tokenHash } = current;
+      if (path === '/api/devices' || path.startsWith('/api/devices/')) {
+        json(200, await manageDevices(pool, req, path, current, req.method === 'POST' ? await body(req) : null)); return;
+      }
+      if (req.method === 'GET' && path === '/api/punches') {
+        const params = new URL(req.url, origin).searchParams;
+        const offset = Number(params.get('offset') || 0);
+        requireValue(Number.isSafeInteger(offset) && offset >= 0, 'Página inválida');
+        const rows = (await pool.query('SELECT event_id,worker_code,worker_name,kind,occurred_at,zone_id,method,action FROM b0d_punches ORDER BY occurred_at,event_id LIMIT 501 OFFSET $1', [offset])).rows;
+        json(200, { rows: rows.slice(0,500), next: rows.length > 500 ? offset+500 : null }); return;
+      }
       const requireAdmin = () => { if (current.role !== 'Admin') throw new HttpError(403, 'Solo administradores'); };
       if (req.method === 'GET' && path === '/api/me') { json(200, { id: current.id, username: current.username, role: current.role }); return; }
       if (path === '/api/users' && req.method === 'GET') {
@@ -163,6 +178,17 @@ export function createApplication(pool, { origin }) {
           await client.query('COMMIT');
         } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
         json(201, { id, code, name, active: true }); return;
+      }
+      if (req.method === 'PATCH' && path.startsWith('/api/workers/')) {
+        requireAdmin(); const id = path.slice('/api/workers/'.length); const input = await body(req);
+        requireValue(/^[a-f0-9-]{36}$/.test(id) && typeof input?.active === 'boolean', 'Estado inválido');
+        if (!input.active) {
+          const last = (await pool.query('SELECT kind FROM b0d_punches WHERE worker_id=$1 ORDER BY occurred_at DESC,event_id DESC LIMIT 1', [id])).rows[0];
+          if (last && last.kind !== 'OUT') throw new HttpError(409, 'Registra y sincroniza la salida antes de desactivar');
+        }
+        const result = await pool.query('UPDATE b0d_workers SET active=$2,updated_at=now() WHERE id=$1 RETURNING id,code,name,active', [id,input.active]);
+        if (!result.rows.length) throw new HttpError(404, 'Colaborador no encontrado');
+        json(200,result.rows[0]); return;
       }
       throw new HttpError(404, 'Ruta no disponible en esta fase');
     } catch (error) {

@@ -35,6 +35,22 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
     private byte[] pendingFace;
     @Override public androidx.lifecycle.Lifecycle getLifecycle() { return lifecycle; }
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor();
+    private static final ExecutorService CLOUD = Executors.newSingleThreadExecutor();
+    private static final java.util.concurrent.atomic.AtomicBoolean CLOUD_BUSY = new java.util.concurrent.atomic.AtomicBoolean();
+    private TextView cloudStatus;
+    private final Runnable cloudTick = new Runnable() {
+        @Override public void run() {
+            if (!foreground) return;
+            if (CLOUD_BUSY.compareAndSet(false, true)) {
+                android.content.Context context = getApplicationContext();
+                CLOUD.execute(() -> {
+                    try { new CloudSync(context).sync(); }
+                    finally { CLOUD_BUSY.set(false); handler.post(() -> { if (foreground && cloudStatus != null) cloudStatus.setText(new CloudSync(context).status()); }); }
+                });
+            }
+            handler.postDelayed(this, 60000);
+        }
+    };
     private final Handler handler = new Handler(Looper.getMainLooper());
     private AdminAccess access;
     private LinearLayout panel;
@@ -61,6 +77,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         foreground = true;
         authenticated = false;
         showHome();
+        handler.removeCallbacks(cloudTick); handler.post(cloudTick);
     }
     @Override protected void onPause() {
         clearFace();
@@ -69,6 +86,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         authenticated = false;
         generation++;
         handler.removeCallbacks(expire);
+        handler.removeCallbacks(cloudTick); cloudStatus = null;
         dismissConfirmation();
         super.onPause();
     }
@@ -160,6 +178,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         TextView brand = new TextView(this); brand.setText(R.string.kiosk_brand); brand.setTextSize(23);
         brand.setTypeface(null, Typeface.BOLD); brand.setTextColor(0xff172b42);
         panel.addView(brand, new LinearLayout.LayoutParams(-1, dp(40)));
+        cloudStatus = text(new CloudSync(this).status(), 12);
         FrameLayout cameraBox = new FrameLayout(this);
         cameraBox.setBackground(surface(0xffe3eaf3, 0xffd8e1ed, 20)); cameraBox.setClipToOutline(true);
         panel.addView(cameraBox, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -387,6 +406,8 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
     private void renderAdminDashboard(AdminDashboard data) {
         if (!requireAdmin()) return;
         screen(R.string.admin_title);
+        Button cloudButton = button(R.string.back_admin, this::showCloud);
+        cloudButton.setText("Conexión con la web");
         LinearLayout outer = panel;
         panel = dashboardCard(outer); text("Personal Operativo · Hoy", 23);
         if (data.rows.isEmpty()) text("Sin colaboradores activos",17);
@@ -426,6 +447,33 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
                 });
             }
         },300000);
+    }
+    private void showCloud() {
+        if (!requireAdmin()) return;
+        screen(R.string.admin_title);
+        text("Conexión con Render", 23);
+        cloudStatus = text(new CloudSync(this).status(), 16);
+        text("La clave se genera en la web, en Tablet. Los registros locales pendientes se enviarán al vincular.", 15);
+        EditText credential = new EditText(this);
+        credential.setHint("Clave de vinculación");
+        credential.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        credential.setSingleLine(true); panel.addView(credential, params());
+        Button link = button(R.string.back_admin, () -> {}); link.setText("Vincular y sincronizar");
+        link.setOnClickListener(v -> {
+            if (!requireAdmin() || !CLOUD_BUSY.compareAndSet(false, true)) return;
+            String value = credential.getText().toString(); credential.setText(""); link.setEnabled(false);
+            final int request = generation;
+            CLOUD.execute(() -> {
+                String result;
+                try { CloudSync cloud = new CloudSync(getApplicationContext()); cloud.link(value); cloud.sync(); result = cloud.status(); }
+                catch (Exception error) { result = "No se pudo vincular. Revisa la clave, la conexión y el despliegue web."; }
+                finally { CLOUD_BUSY.set(false); }
+                final String message = result;
+                handler.post(() -> { if (foreground && authenticated && generation == request) { cloudStatus.setText(message); link.setEnabled(true); } });
+            });
+        });
+        Button sync = button(R.string.back_admin, () -> { handler.removeCallbacks(cloudTick); handler.post(cloudTick); }); sync.setText("Sincronizar ahora");
+        button(R.string.back_admin, this::showAdmin);
     }
     private boolean requireAdmin() {
         if (!authenticated || !foreground) { showHome(); return false; }

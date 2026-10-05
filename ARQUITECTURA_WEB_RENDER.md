@@ -55,3 +55,7 @@ Pruebas: once escenarios de integración en PostgreSQL embebido PGlite, reportad
 Pendiente del usuario: cuenta/proyecto Render y repositorio que se conectará, si existen; política de operación sin conexión. No enviar contraseñas o claves en el chat. ADMIN_USER/ADMIN_PASSWORD se configuran en los secretos del servicio; DATABASE_URL se obtiene mediante referencia interna en Blueprint.
 
 Referencias: [Render Postgres](https://render.com/docs/postgresql-creating-connecting), [Blueprints](https://render.com/docs/blueprint-spec), [conexión con pg](https://node-postgres.com/features/connecting).
+
+## Decisión confirmada 2026-10-04 y fase de sincronización
+Render ya desplegado y acceso web confirmado por el usuario. URL: https://b0d-control-web.onrender.com. GitHub M4rk3z/B0d, rama main. Fire HD 10 con Fire OS 7.3.3.1 validada por usuario en alpha4.
+La operación sin Internet queda aprobada: PostgreSQL central, caché/cola SQLite local. La fase 0.5.0-alpha1 implementa vinculación con credencial larga revocable (no código temporal), subida de colaboradores/marcaciones y catálogo central. Ver PRUEBA_SINCRONIZACION.md para alcance; biometría/horarios aún no migrados. Las notas anteriores de recursos no creados y política offline pendiente quedan superadas por esta actualización.

@@ -145,3 +145,7 @@ Implementado control Admin/User con migración conservadora a esquema 2. Admin g
 
 ## Interfaces web — 2026-10-04
 Tres secciones en la misma pantalla: Usuarios (alta y administración según rol), Colaboradores (búsqueda y perfil con nombre/código/estado), Descargas (CSV de colaboradores con filtro activo/inactivo/todos). El perfil consulta datos vigentes al abrir. Se conservan permisos Admin/User. Sin cambios de esquema ni conexión a tablet. Pruebas existentes: 13 aprobadas; sintaxis JS y diff verificados. Pendiente validación visual en navegador y despliegue Render.
+
+## Sincronización Fire HD 10 — 2026-10-04
+PostgreSQL central confirmado; SQLite solo respaldo/caché/cola offline. Implementada fase 0.5.0-alpha1: API de dispositivos revocables, importación conservadora de colaboradores, UUID idempotentes de marcaciones y catálogo central a tablet. Web agrega Tablet, Marcaciones y CSV. APK apunta a https://b0d-control-web.onrender.com, cifra token con AndroidKeyStore y reintenta al abrir/cada minuto visible. Esquemas PostgreSQL 3 y SQLite 7. No se suben perfiles faciales ni horarios; administración local permanece hasta completar esas migraciones. Guía y límites en PRUEBA_SINCRONIZACION.md. Pendiente prueba real tablet→Render→web.
+Validación final: 21 tests Node y 1 prueba SQLite aprobados; APK compilada, lint sin errores (29 advertencias). Firma coincide con alpha4. APK entregas/B0d-Asistencia-0.5.0-alpha1.apk; SHA256 EA9E75F80A8B46EF634AB249A8F0F7DE2EDBF4678229674878F8375CA471C35A. Comprobada estructura HTML; pendiente prueba visual real.

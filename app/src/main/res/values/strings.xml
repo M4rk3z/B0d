@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="es">
     <string name="app_name">B0d Asistencia</string>
+    <string name="cloud_managed_worker">Con la tablet vinculada, el estado del colaborador se administra desde su perfil en la web.</string>
     <string name="station_label">B0D  /  CONTROL DE PERSONAL</string>
     <string name="setup_admin">Configurar administrador</string>
     <string name="admin_access">Acceso de administrador</string>

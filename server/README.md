@@ -26,3 +26,6 @@ Dependencias fijadas en package.json y pnpm-lock.yaml. Las fotos, plantillas, to
 - Cambiar una cuenta revoca sus sesiones. No se permite desactivar o degradar al último Admin activo.
 - Descargas de asistencia, horas y reportes PDF/XLSX siguen pendientes de sus respectivas fases.
 - Validación local: pruebas HTTP/PostgreSQL embebido y comprobación de sintaxis. Pendiente comprobar interfaz y despliegue real en Render.
+
+## Sincronización de tablet
+Esquema 3 añade dispositivos, mapeos de colaboradores y marcaciones UUID inmutables. `/api/device/*` usa Bearer con hash de token persistido; endpoints web mantienen sesión/Origin y Admin para gestionar dispositivos. Migraciones transaccionales y repetibles. No se admiten credenciales de PostgreSQL en el cliente. Ver ../PRUEBA_SINCRONIZACION.md.
