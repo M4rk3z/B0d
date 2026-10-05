@@ -44,7 +44,7 @@ export async function migrate(pool) {
   finally { client.release(); }
 }
 export async function bootstrapAdmin(pool, adminUser, adminPassword) {
-  if (!adminUser || !adminPassword || adminPassword.length < 12) throw new Error('Configure ADMIN_USER y ADMIN_PASSWORD (mínimo 12 caracteres)');
+  if (!adminUser || !adminPassword || adminPassword.length < 6) throw new Error('Configure ADMIN_USER y ADMIN_PASSWORD (mínimo 6 caracteres)');
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -156,7 +156,7 @@ export function createApplication(pool, { origin }) {
         requireValue(typeof input?.username === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_.@-]{2,99}$/.test(input.username.trim()), 'Usuario: entre 3 y 100 caracteres, sin espacios');
         requireValue(['Admin', 'User'].includes(input.role), 'Rol inválido');
         if (current.role !== 'Admin' && input.role !== 'User') throw new HttpError(403, 'Solo Admin puede crear administradores');
-        requireValue(typeof input.password === 'string' && input.password.length >= 12 && input.password.length <= 256, 'Contraseña: entre 12 y 256 caracteres');
+        requireValue(typeof input.password === 'string' && input.password.length >= 6 && input.password.length <= 256, 'Contraseña: entre 6 y 256 caracteres');
         const salt = randomBytes(16).toString('hex');
         const result = await pool.query('INSERT INTO b0d_users(id,username,role,salt,password_hash) VALUES($1,$2,$3,$4,$5) RETURNING id,username,role,active', [randomUUID(), input.username.trim(), input.role, salt, scryptSync(input.password, salt, 32).toString('hex')]);
         json(201, result.rows[0]); return;
@@ -165,7 +165,7 @@ export function createApplication(pool, { origin }) {
         requireAdmin(); const id = path.slice('/api/users/'.length); const input = await body(req);
         const passwordOnly = input && input.role === undefined && input.active === undefined && typeof input.password === 'string';
         requireValue(/^[a-f0-9-]{36}$/.test(id) && input && (passwordOnly || (['Admin', 'User'].includes(input.role) && typeof input.active === 'boolean')), 'Datos inválidos');
-        requireValue(input.password === undefined || (typeof input.password === 'string' && input.password.length >= 12 && input.password.length <= 256), 'Contraseña: entre 12 y 256 caracteres');
+        requireValue(input.password === undefined || (typeof input.password === 'string' && input.password.length >= 6 && input.password.length <= 256), 'Contraseña: entre 6 y 256 caracteres');
         const client = await pool.connect();
         try {
           await client.query('BEGIN');
