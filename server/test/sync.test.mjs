@@ -70,5 +70,18 @@ test('Sincronización autorizada, durable e idempotente', async t => {
    await db.query('UPDATE b0d_pair_guard SET attempts=5,window_start=now()');
    assert.equal((await request('/api/device/pair','POST',{code:'00000000'},true)).status,429);
   });
+  await t.test('eliminar retira dispositivo, conserva historial y bloquea acceso',async()=>{
+   const login=await request('/api/login','POST',{user:'reader',password:'reader-password-123'});
+   const adminCookie=cookie; cookie=login.headers.get('set-cookie').split(';')[0];
+   assert.equal((await request(`/api/devices/${deviceId}/remove`,'DELETE',{})).status,403);
+   cookie=adminCookie;
+   await db.query('UPDATE b0d_devices SET active=true WHERE id=$1',[deviceId]);
+   assert.equal((await request(`/api/devices/${deviceId}/remove`,'DELETE',{})).status,200);
+   assert.equal((await (await request('/api/devices')).json()).some(row=>row.id===deviceId),false);
+   assert.equal((await request('/api/device/workers','GET',undefined,true)).status,401);
+   assert.equal((await db.query('SELECT count(*) AS n FROM b0d_punches')).rows[0].n,1);
+   await migrate(pool);
+   assert.equal((await (await request('/api/devices')).json()).some(row=>row.id===deviceId),false);
+  });
  } finally { server.closeAllConnections(); await new Promise(resolve=>server.close(resolve)); await db.close(); }
 });

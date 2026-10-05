@@ -26,10 +26,12 @@ export async function migrate(pool) {
     await client.query('SELECT pg_advisory_xact_lock(80405001)');
     await client.query(await readFile(new URL('./schema.sql', import.meta.url), 'utf8'));
     const version = (await client.query('SELECT max(version) AS version FROM b0d_schema_version')).rows[0].version;
-    if (![1, 2, 3, 4].includes(version)) throw new Error('Unsupported database version');
+    if (![1, 2, 3, 4, 5].includes(version)) throw new Error('Unsupported database version');
     await client.query(await readFile(new URL('./users.sql', import.meta.url), 'utf8'));
     await client.query(await readFile(new URL('./sync.sql', import.meta.url), 'utf8'));
     await client.query(await readFile(new URL('./pairing.sql', import.meta.url), 'utf8'));
+    await client.query('ALTER TABLE b0d_devices ADD COLUMN IF NOT EXISTS deleted BOOLEAN NOT NULL DEFAULT FALSE');
+    await client.query('INSERT INTO b0d_schema_version VALUES(5) ON CONFLICT DO NOTHING');
     await client.query('COMMIT');
   } catch (error) { await client.query('ROLLBACK'); throw error; }
   finally { client.release(); }

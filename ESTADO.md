@@ -155,3 +155,6 @@ Pantalla inicial reorganizada según referencia: engrane superior, cámara ampli
 
 ## Vinculación sencilla — 0.5.0-alpha3
 La web ahora genera un código de 8 dígitos (agrupado 1234 5678), válido 10 minutos y de un solo uso. La APK canjea el código por una credencial persistente cifrada; no hace falta copiar la clave larga. Cinco canjes por minuto como límite global persistente en esta instalación. Esquema PostgreSQL 4. Vínculos previos se conservan. Si la respuesta de canje se pierde, generar otro código y revocar el vínculo anterior. APK versionCode 14. Pruebas servidor: 22 aprobadas. Pendiente prueba real del código en Kindle.
+
+## Web compacta y dispositivos — 2026-10-04
+Listados de usuarios, colaboradores, marcaciones y tablets en flexbox con scroll interno. Filas compactas; marcaciones con desplazamiento horizontal en pantallas estrechas. Tablet reúne formulario/código y listado en columnas adaptables. Admin puede eliminar dispositivos: baja lógica que los oculta y revoca acceso, conservando referencias e historial. Esquema PostgreSQL 5. 23 pruebas aprobadas, sintaxis JS y estructura HTML verificadas; pendiente comprobación visual en navegador. Sin nueva APK.

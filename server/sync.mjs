@@ -41,7 +41,7 @@ export async function deviceRoute(pool, req, path, input) {
 }
 export async function manageDevices(pool, req, path, current, input) {
  check(current.role === 'Admin', 403, 'Solo administradores');
- if (path === '/api/devices' && req.method === 'GET') return (await pool.query('SELECT id,name,active,last_seen FROM b0d_devices ORDER BY created_at DESC')).rows;
+ if (path === '/api/devices' && req.method === 'GET') return (await pool.query('SELECT id,name,active,last_seen FROM b0d_devices WHERE NOT deleted ORDER BY created_at DESC')).rows;
  if (path === '/api/devices' && req.method === 'POST') {
   check(typeof input?.name === 'string' && input.name.trim().length > 0 && input.name.length <= 80, 400, 'Nombre requerido (máximo 80 caracteres)');
   const token = randomBytes(32).toString('hex'); const id = randomUUID();
@@ -56,9 +56,10 @@ export async function manageDevices(pool, req, path, current, input) {
   } catch(error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
   return { id, code, expiresIn: 600 };
  }
- const id = path.slice('/api/devices/'.length);
+ const remove = path.endsWith('/remove');
+ const id = path.slice('/api/devices/'.length).replace(/\/remove$/, '');
  check(req.method === 'DELETE' && uuid(id), 400, 'Solicitud inválida');
- await pool.query('UPDATE b0d_devices SET active=false WHERE id=$1', [id]); return { ok: true };
+ await pool.query('UPDATE b0d_devices SET active=false,deleted=deleted OR $2 WHERE id=$1', [id,remove]); return { ok: true };
 }
 export async function redeemPairing(pool, input) {
  const code = typeof input?.code === 'string' ? input.code.replace(/[ -]/g,'') : '';

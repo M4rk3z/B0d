@@ -140,7 +140,14 @@ async function loadDevices() {
         try { await write(`/api/devices/${row.id}`, {}, 'DELETE'); $('device-token').value = ''; $('device-secret').hidden = true; await loadDevices(); }
         catch (error) { $('status').textContent = error.message; revoke.disabled = false; }
       }); card.append(revoke);
-    } $('devices').append(card);
+    }
+    const remove = element('button', 'Eliminar', 'danger'); remove.type = 'button';
+    remove.addEventListener('click', async () => {
+      if (!confirm(`¿Eliminar ${row.name}? Se bloqueará su conexión y se conservarán sus marcaciones.`)) return;
+      remove.disabled = true;
+      try { await write(`/api/devices/${row.id}/remove`, {}, 'DELETE'); $('device-token').value = ''; $('device-secret').hidden = true; await loadDevices(); }
+      catch (error) { $('status').textContent = error.message; remove.disabled = false; }
+    }); card.append(remove); $('devices').append(card);
   }
 }
 submit('device-form', async data => {
