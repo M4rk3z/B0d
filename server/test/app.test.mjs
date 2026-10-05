@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
-import { createApplication, migrate, workerFields } from '../app.mjs';
+import { createApplication, migrate, bootstrapAdmin, workerFields } from '../app.mjs';
 
 test('Fundación web con PostgreSQL embebido', async t => {
   const db = new PGlite();
@@ -10,7 +11,12 @@ test('Fundación web con PostgreSQL embebido', async t => {
     query: async (sql, args) => sql.includes('CREATE TABLE') ? (await db.exec(sql)).at(-1) : db.query(sql, args),
     connect: async () => ({ query: pool.query, release() {} })
   };
+  await db.exec(await readFile(new URL('../schema.sql', import.meta.url), 'utf8'));
+  await db.query("INSERT INTO b0d_sessions VALUES($1,now()+interval '30 minutes')", ['a'.repeat(64)]);
   await migrate(pool); await migrate(pool);
+  assert.equal((await db.query('SELECT count(*) AS total FROM b0d_sessions')).rows[0].total, 0);
+  await bootstrapAdmin(pool, 'test-admin', 'test-password-only-123');
+  await bootstrapAdmin(pool, 'another-admin', 'test-password-only-456');
   const origin = 'http://127.0.0.1:3000';
   const server = createApplication(pool, { origin, adminUser: 'test-admin', adminPassword: 'test-password-only-123' });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
@@ -43,6 +49,35 @@ test('Fundación web con PostgreSQL embebido', async t => {
     await t.test('rechaza campos y código SQL', async () => {
       assert.throws(() => workerFields({ code: "a';DROP", name: 'Name' }));
       assert.equal((await request('/api/workers', 'POST', { code: 'OK', name: '' })).status, 400);
+    });
+    await t.test('usuarios, permisos, revocación y protección del último Admin', async () => {
+      const adminCookie = cookie;
+      const me = await (await request('/api/me')).json(); assert.equal(me.role, 'Admin');
+      assert.equal((await (await request('/api/users')).json()).length, 1);
+      const created = await request('/api/users', 'POST', { username: 'reader', password: 'reader-password-123', role: 'User' });
+      assert.equal(created.status, 201); const user = await created.json(); assert.ok(!('password_hash' in user));
+      assert.equal((await request('/api/users', 'POST', { username: 'READER', password: 'reader-password-123', role: 'User' })).status, 409);
+      assert.equal((await request(`/api/users/${me.id}`, 'PATCH', { role: 'User', active: true })).status, 409);
+      assert.equal((await request(`/api/users/${me.id}`, 'PATCH', { role: 'Admin', active: false })).status, 409);
+      const login = await request('/api/login', 'POST', { user: 'reader', password: 'reader-password-123' });
+      assert.equal(login.status, 200); cookie = login.headers.get('set-cookie').split(';')[0]; const userCookie = cookie;
+      assert.equal((await request('/api/workers')).status, 200);
+      assert.equal((await request('/api/users')).status, 403);
+      assert.equal((await request('/api/workers', 'POST', { code: 'NO', name: 'No' })).status, 403);
+      assert.equal((await request('/api/users', 'POST', { username: 'escalation', password: 'reader-password-123', role: 'Admin' })).status, 403);
+      assert.equal((await request('/api/users', 'POST', { username: 'another-user', password: 'reader-password-123', role: 'User' })).status, 201);
+      assert.equal((await request(`/api/users/${user.id}`, 'PATCH', { role: 'Admin', active: true })).status, 403);
+      cookie = adminCookie;
+      assert.equal((await request(`/api/users/${user.id}`, 'PATCH', { role: 'User', active: false })).status, 200);
+      cookie = userCookie; assert.equal((await request('/api/workers')).status, 401);
+      assert.equal((await request('/api/login', 'POST', { user: 'reader', password: 'reader-password-123' })).status, 401);
+      cookie = adminCookie;
+      assert.equal((await request(`/api/users/${user.id}`, 'PATCH', { role: 'User', active: true, password: 'new-password-only-123' })).status, 200);
+      assert.equal((await request('/api/login', 'POST', { user: 'reader', password: 'reader-password-123' })).status, 401);
+      assert.equal((await request('/api/login', 'POST', { user: 'reader', password: 'new-password-only-123' })).status, 200);
+      await migrate(pool); await bootstrapAdmin(pool, 'replacement', 'replacement-password-123');
+      assert.equal((await request('/api/me')).status, 200);
+      assert.equal((await db.query("SELECT count(*) AS total FROM b0d_users WHERE role='Admin'")).rows[0].total, 1);
     });
     await t.test('logout revoca sesión', async () => {
       assert.equal((await request('/api/logout', 'POST', {})).status, 200);

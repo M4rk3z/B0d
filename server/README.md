@@ -17,3 +17,12 @@ El archivo `../render.yaml` es una plantilla de evaluación: web Node y Postgres
 El Blueprint requiere un repositorio conectado. Esta carpeta todavía no tiene despliegue ni URL pública. No cargar datos operativos hasta decidir el plan, respaldos y aceptación. El servidor escucha PORT y /healthz consulta la base.
 
 Dependencias fijadas en package.json y pnpm-lock.yaml. Las fotos, plantillas, tokens de tablet y datos SQLite actuales aún no se importan. Los colaboradores que se creen aquí son independientes hasta implementar la migración/vinculación.
+
+## Usuarios web (2026-10-04)
+- Admin: gestión de colaboradores y cuentas; creación, cambio de rol, activación/desactivación y cambio de contraseña.
+- User: creación de cuentas User y consulta/descarga CSV de colaboradores. Sin edición de colaboradores ni gestión de cuentas existentes.
+- La cuenta inicial configurada en Render se importa una sola vez como Admin. Las variables de entorno no sobrescriben cambios posteriores de contraseña.
+- Migración de esquema 1 a 2 conserva colaboradores y revoca sesiones anteriores sin cuenta asociada. Se requiere iniciar sesión de nuevo tras esta actualización.
+- Cambiar una cuenta revoca sus sesiones. No se permite desactivar o degradar al último Admin activo.
+- Descargas de asistencia, horas y reportes PDF/XLSX siguen pendientes de sus respectivas fases.
+- Validación local: pruebas HTTP/PostgreSQL embebido y comprobación de sintaxis. Pendiente comprobar interfaz y despliegue real en Render.

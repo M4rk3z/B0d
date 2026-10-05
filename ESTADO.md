@@ -139,3 +139,6 @@ Alpha2: WorkersDb.java y workers_v1.sql crean attendance.db (versión 1) con wor
 Pendiente aceptación de 0.2.0 en tablet. Las pruebas de migración ejecutan los SQL reales en Python, no el repositorio Android; conservación del PIN y actualización real requieren tablet. No hay horarios, cálculo de horas, correcciones, reconocimiento facial, exportación ni recuperación de PIN. Próxima fase: definir horarios, descansos y reglas de cálculo, después de recuperar margen de uso y recoger resultados de la prueba. No pedir autorización repetida para el alcance del proyecto ya aprobado.
 
 Cierre alpha4: APK generada, compilación/lint correctos (0 errores/26 avisos) y firma coincidente verificada. SHA-256 D3ABC471C41013A2A539FF31E10E670E677360BA275FA9D2C14FA8C46CED3D3A. Revisión visual en tablet pendiente.
+
+## Actualización web: cuentas y roles — 2026-10-04
+Implementado control Admin/User con migración conservadora a esquema 2. Admin gestiona cuentas y colaboradores; User crea otras cuentas User y descarga CSV de colaboradores. Cuenta inicial de Render conservada como Admin. Pruebas locales aprobadas; verificar despliegue en Render y acceso con ambos roles. La tablet sigue independiente.

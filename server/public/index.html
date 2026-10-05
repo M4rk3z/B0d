@@ -1,7 +1,10 @@
 <!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>B0D · Control web</title><link rel="stylesheet" href="/styles.css"><script defer src="/app.js"></script></head>
-<body><main><header><div><span class="brand">B0D</span><h1>Control web</h1></div><button id="logout" hidden>Salir</button></header>
+<body><main><header><div><span class="brand">B0D</span><h1>Control web</h1><span id="identity" class="pill"></span></div><button id="logout" hidden>Salir</button></header>
 <p id="status" role="status" aria-live="polite"></p>
 <form id="login" class="card login"><h2>Acceso</h2><label>Usuario<input name="user" autocomplete="username" required maxlength="100"></label><label>Contraseña<input name="password" type="password" autocomplete="current-password" required maxlength="256"></label><button>Entrar</button></form>
-<section id="workspace" hidden><div class="notice">Preparación del sistema · La tablet todavía no está vinculada.</div><h2>Personal Operativo</h2><div class="layout"><form id="worker" class="card"><h3>Nuevo colaborador</h3><label>Código<input name="code" required maxlength="20" autocomplete="off"></label><label>Nombre<input name="name" required maxlength="100" autocomplete="off"></label><button>Guardar</button></form><div id="workers" class="grid"></div></div></section>
-</main></body></html>
+<section id="workspace" hidden><div class="notice">Preparación del sistema · La tablet todavía no está vinculada.</div>
+<div class="section-heading"><h2>Personal Operativo</h2><button id="download">Descargar CSV</button></div>
+<div class="layout"><form id="worker" class="card"><h3>Nuevo colaborador</h3><label>Código<input name="code" required maxlength="20" autocomplete="off"></label><label>Nombre<input name="name" required maxlength="100" autocomplete="off"></label><button>Guardar</button></form><div id="workers" class="grid"></div></div>
+<h2 class="section-title">Usuarios</h2><div class="layout"><form id="account" class="card"><h3>Crear usuario</h3><label>Usuario<input name="username" required minlength="3" maxlength="100" pattern="[a-zA-Z0-9][a-zA-Z0-9_.@\-]{2,99}" autocomplete="off"></label><label>Contraseña<input name="password" type="password" required minlength="12" maxlength="256" autocomplete="new-password"></label><label>Rol<select id="role" name="role"><option>User</option></select></label><button>Crear usuario</button></form><section id="user-list" hidden><div id="users" class="grid"></div></section></div>
+</section></main></body></html>
