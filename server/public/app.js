@@ -25,7 +25,8 @@ async function api(path, options = {}) {
   return data;
 }
 const write = (path, data, method = 'POST') => api(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-function visible(logged) {
+  function visible(logged) {
+    if (!logged) { $('report-preview').replaceChildren(); $('report-status').textContent = ''; }
     if (!logged) { $('password-dialog').close();finishConfirm(false);scheduleRows=[];scheduleId=null;scheduleRevision=null;scheduleDirty=false;weekDraft=[];$('day-dialog').close();$('schedule-form').reset();$('schedule-days').replaceChildren();$('schedule-list').replaceChildren(); }
   if (!logged) { $('device-token').value = ''; $('device-secret').hidden = true; $('devices').replaceChildren(); $('punches').replaceChildren(); }
   $('login').hidden = logged; $('workspace').hidden = !logged; $('logout').hidden = !logged;
@@ -279,3 +280,26 @@ $('delete-schedule').addEventListener('click',async()=>{
  try{await write('/api/schedules/'+id,{},'DELETE');scheduleDirty=false;scheduleRows=await api('/api/schedules');editSchedule();$('schedule-message').textContent='Horario eliminado';}
  catch(error){$('schedule-message').textContent=error.message;}finally{$('delete-schedule').disabled=false;}
 });
+
+const reportToday=new Date(), reportDate=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+$('report-to').value=reportDate(reportToday);$('report-from').value=reportDate(new Date(reportToday.getFullYear(),reportToday.getMonth(),1));
+function reportParams(format){return new URLSearchParams({from:$('report-from').value,to:$('report-to').value,type:$('report-type').value,format});}
+async function runReport(format){
+ if(!$('report-form').reportValidity())return;
+ const buttons=$('report-form').querySelectorAll('button');buttons.forEach(b=>b.disabled=true);$('report-status').textContent='Preparando reporte…';
+ try{
+  if(format==='json'){
+   const data=await api('/api/reports?'+reportParams(format));const table=document.createElement('table'),head=document.createElement('thead'),body=document.createElement('tbody');
+   if(data.type==='total'){const groups=document.createElement('tr');for(const [label,span,css] of [['',2,''],['Horario Regular',3,'regular-group'],['Horas Extras',3,'extra-group'],['Horas regulares + extras',1,'']]){const th=element('th',label,css);th.colSpan=span;groups.append(th);}head.append(groups);}
+   const labels=document.createElement('tr');for(const label of data.headers)labels.append(element('th',label));head.append(labels);table.append(head,body);
+   data.table.forEach((cells,index)=>{const tr=document.createElement('tr');for(const cell of cells)tr.append(element('td',cell));if(data.rows[index].issues.length){tr.className='report-issue';tr.title=data.rows[index].issues.join('; ');}body.append(tr);});$('report-preview').replaceChildren(table);
+   const notes=data.rows.filter(row=>row.issues.length);if(notes.length){const details=document.createElement('details');details.append(element('summary',`Observaciones (${notes.length})`));for(const row of notes)details.append(element('p',`${row.date} · ${row.code}: ${row.issues.join('; ')}`));$('report-preview').append(details);}
+   $('report-status').textContent=`${data.rows.length} jornadas · Duraciones en horas:minutos`;
+  }else{
+   const response=await fetch('/api/reports?'+reportParams(format),{credentials:'same-origin'});if(!response.ok){const data=await response.json();if(response.status===401)visible(false);throw new Error(data.error||'No se pudo generar el archivo');}
+   const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=url;link.download=`Marcaje-${$('report-type').value==='regular'?'Regular':'Total'}-${$('report-from').value}-${$('report-to').value}.${format}`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);$('report-status').textContent='Archivo generado';
+  }
+ }catch(error){$('report-status').textContent=error.message;}finally{buttons.forEach(b=>b.disabled=false);}
+}
+$('report-form').addEventListener('submit',event=>{event.preventDefault();runReport('json');});$('report-xls').addEventListener('click',()=>runReport('xls'));$('report-pdf').addEventListener('click',()=>runReport('pdf'));
+for(const id of ['report-from','report-to','report-type'])$(id).addEventListener('change',()=>{$('report-preview').replaceChildren();$('report-status').textContent='';});

@@ -38,6 +38,19 @@ test('Sincronización autorizada, durable e idempotente', async t => {
    assert.equal((await request('/api/device/punch','POST',{...event,kind:'OUT'},true)).status,409);
    assert.equal((await db.query('SELECT kind FROM b0d_punches')).rows[0].kind,'IN');
   });
+  await t.test('horario histórico confirmado es idempotente e inmutable',async()=>{
+   const date=new Date(event.time).toISOString().slice(0,10);
+   const context={date,zone:'UTC',schedule:null,plan:null};
+   const send=c=>request('/api/device/context','POST',{eventId:event.eventId,context:c},true);
+   assert.equal((await send(context)).status,200);assert.equal((await send(context)).status,200);
+   assert.equal((await send({...context,schedule:'other'})).status,409);
+   assert.equal((await send({...context,zone:'bad'})).status,400);
+   assert.equal((await request('/api/device/context','POST',{eventId:randomUUID(),context},true)).status,403);
+   const q=`/api/reports?from=${date}&to=${date}&type=total`;
+   assert.equal((await fetch(base+q)).status,401);
+   const report=await (await request(q)).json();assert.equal(report.rows.length,1);assert.equal(report.rows[0].effective,null);
+   for(const format of ['xls','pdf']){const res=await request(q+'&format='+format);assert.equal(res.status,200);assert.match(res.headers.get('content-disposition'),new RegExp('\\.'+format));}
+  });
   await t.test('rechaza evento sin colaborador y fechas inválidas',async()=>{
    assert.equal((await request('/api/device/punch','POST',{...event,eventId:randomUUID(),workerId:randomUUID()},true)).status,409);
    assert.equal((await request('/api/device/punch','POST',{...event,time:Date.now()+172800000},true)).status,400);
@@ -56,7 +69,8 @@ test('Sincronización autorizada, durable e idempotente', async t => {
   await t.test('User no administra dispositivos',async()=>{
    await request('/api/users','POST',{username:'reader',password:'reader-password-123',role:'User'});
    const adminCookie=cookie; const login=await request('/api/login','POST',{user:'reader',password:'reader-password-123'}); cookie=login.headers.get('set-cookie').split(';')[0];
-   assert.equal((await request('/api/devices')).status,403); assert.equal((await request('/api/devices','POST',{name:'No'})).status,403); assert.equal((await request('/api/punches')).status,200); cookie=adminCookie;
+   assert.equal((await request('/api/devices')).status,403); assert.equal((await request('/api/devices','POST',{name:'No'})).status,403); assert.equal((await request('/api/punches')).status,200);
+   assert.equal((await request('/api/reports?from=2026-10-01&to=2026-10-01&type=regular&format=xls')).status,200);cookie=adminCookie;
   });
   await t.test('revocación bloquea nuevos envíos sin borrar registros',async()=>{
    await request(`/api/devices/${deviceId}`,'DELETE',{});

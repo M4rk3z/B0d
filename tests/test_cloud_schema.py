@@ -19,6 +19,8 @@ class CloudMigrationTests(unittest.TestCase):
             db.execute("INSERT INTO face_profiles(worker_id,encrypted_photo,captured_at,format_version) VALUES('w',?,1,1)", (b'private',))
             db.executescript((RAW / 'cloud_v7.sql').read_text(encoding='utf-8-sig'))
             db.executescript((RAW / 'cloud_v8.sql').read_text(encoding='utf-8-sig'))
+            db.executescript((RAW / 'cloud_v9.sql').read_text(encoding='utf-8-sig'))
+            db.execute("INSERT INTO cloud_context_receipts VALUES('evt')")
             pending = 'SELECT count(*) FROM punches p WHERE NOT EXISTS(SELECT 1 FROM cloud_receipts r WHERE r.event_id=p.event_id)'
             self.assertEqual(db.execute(pending).fetchone()[0], 1)
             db.execute("INSERT INTO cloud_receipts VALUES('evt',200)")
@@ -28,6 +30,7 @@ class CloudMigrationTests(unittest.TestCase):
             self.assertEqual(db.execute('SELECT event_id FROM punches').fetchone()[0], 'evt')
             self.assertEqual(db.execute('SELECT encrypted_photo FROM face_profiles').fetchone()[0], b'private')
             self.assertEqual(db.execute('SELECT schedule_id FROM shift_contexts WHERE entry_seq=1').fetchone()[0], 'original')
+            self.assertEqual(db.execute('SELECT event_id FROM cloud_context_receipts').fetchone()[0], 'evt')
             self.assertEqual(db.execute('PRAGMA foreign_key_check').fetchall(), [])
             db.close()
 if __name__ == '__main__': unittest.main()

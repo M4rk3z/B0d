@@ -44,3 +44,11 @@ Sustituye la clave manual del procedimiento anterior: en Tablet pulsa Generar c�
 5. Editar el horario conserva versiones anteriores. Para aplicar la versión nueva, guardar una nueva asignación desde el perfil con fecha futura. Las marcaciones de jornadas previas conservan su horario.
 6. Sin red, la tablet conserva lo último recibido. Una asignación recibida tarde no se aplica retroactivamente: se mueve al día actual si está sin marcaciones, o al siguiente si ya comenzó. Revisar el resumen local para ver la fecha aplicada.
 Las notas anteriores que indican horarios sin sincronizar quedan superadas por alpha4. Los horarios creados localmente antes de esta fase se conservan, pero no se importan automáticamente a la web; crear/asignar su equivalente web. Biometría sigue local.
+
+## Alpha5: reportes de jornada
+1. Esperar que Render complete el despliegue de los reportes. Instalar `B0d-Asistencia-0.5.0-alpha5.apk` encima de la versión actual, sin desinstalar.
+2. Abrir la APK con Internet y sincronizar. Verificar “Marcaciones pendientes: 0” y “Jornadas pendientes: 0”. Se envían hasta 200 por ciclo; mantenerla abierta hasta finalizar.
+3. Web → Marcaciones → Reportes y descargas: seleccionar Marcaje Regular o Marcaje Total, fechas y Ver tabla. Descargar ambos formatos XLS y PDF.
+4. Comprobar una jornada cerrada con horario: 08:00–17:00, comida automática 13:00–14:00 da 8:00 efectivas y 0:00 extras. Entrada 09:00 y salida 19:00 con ese objetivo da 8:00 regulares + 1:00 extra, iniciada a las 18:00.
+5. Si exige marcación de pausas, se descuentan las pausas realmente marcadas. Si falta salida o descanso obligatorio, no se inventa un total: N/D con observación. Sin horario, hay total efectivo pero no desglose de extras.
+6. Revisar fechas de inicio en turnos nocturnos, varias entradas/salidas del día acumuladas en una sola fila, y que editar un horario no altere jornadas anteriores.

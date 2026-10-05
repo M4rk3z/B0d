@@ -25,7 +25,7 @@ final class WorkersDb extends SQLiteOpenHelper {
         }
     }
     WorkersDb(Context context) {
-        super(context.getApplicationContext(), "attendance.db", null, 8);
+        super(context.getApplicationContext(), "attendance.db", null, 9);
         this.context = context.getApplicationContext();
     }
     @Override public void onConfigure(SQLiteDatabase db) { db.setForeignKeyConstraintsEnabled(true); }
@@ -38,6 +38,7 @@ final class WorkersDb extends SQLiteOpenHelper {
         applySchema(db, R.raw.recognition_v6);
         applySchema(db, R.raw.cloud_v7);
         applySchema(db, R.raw.cloud_v8);
+        applySchema(db, R.raw.cloud_v9);
     }
     private void applySchema(SQLiteDatabase db, int resource) {
         StringBuilder sql = new StringBuilder();
@@ -51,7 +52,7 @@ final class WorkersDb extends SQLiteOpenHelper {
         }
     }
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        if (oldVersion < 1 || newVersion > 8) throw new IllegalStateException("Explicit migration required; never drop worker data");
+        if (oldVersion < 1 || newVersion > 9) throw new IllegalStateException("Explicit migration required; never drop worker data");
         if (oldVersion < 2) applySchema(db, R.raw.attendance_v2);
         if (oldVersion < 3) applySchema(db, R.raw.schedules_v3);
         if (oldVersion < 4) {
@@ -62,6 +63,7 @@ final class WorkersDb extends SQLiteOpenHelper {
         if (oldVersion < 6) applySchema(db, R.raw.recognition_v6);
         if (oldVersion < 7) applySchema(db, R.raw.cloud_v7);
         if (oldVersion < 8) applySchema(db, R.raw.cloud_v8);
+        if (oldVersion < 9) applySchema(db, R.raw.cloud_v9);
     }
     List<Worker> list() {
         List<Worker> rows = new ArrayList<>();

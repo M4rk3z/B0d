@@ -49,7 +49,7 @@ final class CloudSync {
         // A replacement credential may refer to another device; rebuild mappings, never remove punches.
         try (WorkersDb helper = new WorkersDb(context)) {
             SQLiteDatabase db = helper.getWritableDatabase(); db.beginTransaction();
-            try { db.delete("cloud_workers", null, null); db.delete("cloud_receipts", null, null); db.setTransactionSuccessful(); } finally { db.endTransaction(); }
+            try { db.delete("cloud_workers", null, null); db.delete("cloud_receipts", null, null); db.delete("cloud_context_receipts",null,null); db.setTransactionSuccessful(); } finally { db.endTransaction(); }
         }
         if (!prefs.edit().putString("credential", encrypted).putString("device", remote.getString("deviceId")).commit()) throw new Exception("No se pudo guardar la vinculación");
     }
@@ -94,9 +94,19 @@ final class CloudSync {
                 db.setTransactionSuccessful();
             } finally { db.endTransaction(); }
             CloudSchedules.apply(db, request("/api/device/schedules", null, credential));
+            try (Cursor c=db.rawQuery("SELECT p.event_id,p.seq,p.worker_id,p.occurred_at,p.zone_id FROM punches p JOIN cloud_receipts r ON r.event_id=p.event_id WHERE p.kind='IN' AND NOT EXISTS(SELECT 1 FROM cloud_context_receipts s WHERE s.event_id=p.event_id) ORDER BY p.seq LIMIT 200",null)) {
+                while(c.moveToNext()) {
+                    JSONObject data=new JSONObject().put("eventId",c.getString(0)).put("context",ShiftExport.context(db,c.getLong(1),c.getString(2),c.getLong(3),c.getString(4)));
+                    JSONObject ack=request("/api/device/context",data,credential);
+                    if(!ack.getBoolean("stored"))throw new Exception("Context acknowledgement missing");
+                    ContentValues receipt=new ContentValues();receipt.put("event_id",c.getString(0));db.insertOrThrow("cloud_context_receipts",null,receipt);
+                }
+            }
             long pending;
             try (Cursor c = db.rawQuery("SELECT count(*) FROM punches p WHERE NOT EXISTS(SELECT 1 FROM cloud_receipts r WHERE r.event_id=p.event_id)", null)) { c.moveToFirst(); pending = c.getLong(0); }
-            prefs.edit().putString("status", "Última sincronización: " + java.time.LocalTime.now().withNano(0) + " · Pendientes: " + pending).apply();
+            long contexts;
+            try(Cursor c=db.rawQuery("SELECT count(*) FROM punches p WHERE kind='IN' AND NOT EXISTS(SELECT 1 FROM cloud_context_receipts r WHERE r.event_id=p.event_id)",null)){c.moveToFirst();contexts=c.getLong(0);}
+            prefs.edit().putString("status", "Última sincronización: " + java.time.LocalTime.now().withNano(0) + " · Marcaciones pendientes: " + pending + " · Jornadas pendientes: " + contexts).apply();
         } catch (Exception error) {
             String message = error instanceof RemoteError ? error.getMessage() : "Sin conexión o sincronización interrumpida";
             prefs.edit().putString("status", message + ". Los registros locales se conservan.").apply();

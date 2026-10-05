@@ -3,6 +3,7 @@ import { randomBytes, randomUUID, createHash, scryptSync, timingSafeEqual } from
 import { readFile } from 'node:fs/promises';
 import { deviceRoute, manageDevices, redeemPairing } from './sync.mjs';
 import { scheduleRoute } from './schedules.mjs';
+import { loadReport,headers as reportHeaders,cells as reportCells,excelReport,pdfReport } from './reports.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
@@ -27,7 +28,7 @@ export async function migrate(pool) {
     await client.query('SELECT pg_advisory_xact_lock(80405001)');
     await client.query(await readFile(new URL('./schema.sql', import.meta.url), 'utf8'));
     const version = (await client.query('SELECT max(version) AS version FROM b0d_schema_version')).rows[0].version;
-    if (![1, 2, 3, 4, 5, 6, 7, 8].includes(version)) throw new Error('Unsupported database version');
+    if (![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(version)) throw new Error('Unsupported database version');
     await client.query(await readFile(new URL('./users.sql', import.meta.url), 'utf8'));
     await client.query(await readFile(new URL('./sync.sql', import.meta.url), 'utf8'));
     await client.query(await readFile(new URL('./pairing.sql', import.meta.url), 'utf8'));
@@ -37,6 +38,7 @@ export async function migrate(pool) {
     await client.query(await readFile(new URL('./assignments.sql', import.meta.url), 'utf8'));
     await client.query('ALTER TABLE b0d_schedules ADD COLUMN IF NOT EXISTS deleted BOOLEAN NOT NULL DEFAULT FALSE');
     await client.query('INSERT INTO b0d_schema_version VALUES(8) ON CONFLICT DO NOTHING');
+    await client.query(await readFile(new URL('./reports.sql', import.meta.url), 'utf8'));
     await client.query('COMMIT');
   } catch (error) { await client.query('ROLLBACK'); throw error; }
   finally { client.release(); }
@@ -124,6 +126,13 @@ export function createApplication(pool, { origin }) {
       }
       const current = await session(req);
       const { tokenHash } = current;
+      if (req.method === 'GET' && path === '/api/reports') {
+        const params=new URL(req.url,origin).searchParams;const report=await loadReport(pool,params);const format=params.get('format')||'json';
+        if(format==='json'){json(200,{...report,headers:reportHeaders(report.type),table:report.rows.map(row=>reportCells(row,report.type))});return;}
+        requireValue(['xls','pdf'].includes(format),'Formato inválido');
+        const buffer=format==='xls'?excelReport(report):await pdfReport(report);
+        res.writeHead(200,{'Content-Type':format==='xls'?'application/vnd.ms-excel':'application/pdf','Content-Disposition':`attachment; filename="Marcaje-${report.type==='regular'?'Regular':'Total'}-${report.from}-${report.to}.${format}"`});res.end(buffer);return;
+      }
       if (path === '/api/schedules' || path.startsWith('/api/schedules/') || path === '/api/schedule-assignments') {
         json(200, await scheduleRoute(pool, req, path, current, ['POST','PATCH'].includes(req.method) ? await body(req) : null)); return;
       }

@@ -68,7 +68,7 @@ final class AttendanceRepository {
             while (c.moveToNext()) bind(c.getLong(0), choose(c.getString(1), c.getLong(2), c.getString(3)));
         }
     }
-    private Context forEntry(long seq, String worker, long time, String zone) {
+    Context forEntry(long seq, String worker, long time, String zone) {
         try (Cursor c = db.query("shift_contexts", new String[]{"schedule_id","work_date","zone_id"}, "entry_seq=?", new String[]{Long.toString(seq)}, null, null, null)) {
             if (c.moveToFirst()) return load(c.isNull(0) ? null : c.getString(0), c.getString(2), LocalDate.parse(c.getString(1)));
         }

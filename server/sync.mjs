@@ -26,6 +26,17 @@ export async function deviceRoute(pool, req, path, input) {
     await client.query('INSERT INTO b0d_device_workers(device_id,local_id,worker_id) VALUES($1,$2,$3)', [device.id,input.id,worker.id]);
    }
    result = worker;
+  } else if (req.method === 'POST' && path === '/api/device/context') {
+   const c=input?.context,p=c?.plan;
+   check(uuid(input?.eventId) && c && /^\d{4}-\d{2}-\d{2}$/.test(c.date) && typeof c.zone==='string' && c.zone.length<=100 && (c.schedule===null || (typeof c.schedule==='string'&&c.schedule.length<=100)),400,'Contexto inválido');
+   try {new Intl.DateTimeFormat('en',{timeZone:c.zone});check(new Date(c.date+'T00:00:00Z').toISOString().slice(0,10)===c.date,400,'Fecha inválida');}catch{check(false,400,'Fecha o zona inválida');}
+   check(p===null || (p && Number.isSafeInteger(p.start) && Number.isSafeInteger(p.end) && p.end>p.start && p.end-p.start<=93600000 && Number.isSafeInteger(p.target) && p.target>0 && p.target<=86400000 && typeof p.marked==='boolean' && Array.isArray(p.rests) && p.rests.length<=8 && p.rests.every(r=>Array.isArray(r)&&r.length===2&&r.every(Number.isSafeInteger)&&r[0]>=p.start&&r[1]<=p.end&&r[1]>r[0])),400,'Plan inválido');
+   const entry=(await client.query("SELECT 1 FROM b0d_punches p JOIN b0d_device_workers m ON m.worker_id=p.worker_id AND m.device_id=$2 WHERE p.event_id=$1 AND p.kind='IN'",[input.eventId,device.id])).rows[0];
+   check(entry,403,'Entrada no disponible para esta tablet');
+   const normalized={date:c.date,zone:c.zone,schedule:c.schedule,plan:p===null?null:{start:p.start,end:p.end,target:p.target,marked:p.marked,rests:p.rests}};
+   await client.query('INSERT INTO b0d_shift_contexts VALUES($1,$2) ON CONFLICT(event_id) DO NOTHING',[input.eventId,JSON.stringify(normalized)]);
+   const same=(await client.query('SELECT context=$2::jsonb AS same FROM b0d_shift_contexts WHERE event_id=$1',[input.eventId,JSON.stringify(normalized)])).rows[0].same;
+   check(same,409,'La jornada ya tiene otro horario confirmado');result={stored:true};
   } else if (req.method === 'POST' && path === '/api/device/punch') {
    check(uuid(input?.eventId) && uuid(input.workerId) && ['IN','OUT','BREAK_START','BREAK_END'].includes(input.kind) && ['manual','facial'].includes(input.method) && Number.isSafeInteger(input.time) && input.time > 0 && input.time <= Date.now()+86400000 && typeof input.zone === 'string' && input.zone.length <= 100 && (input.action === null || ['IN','OUT','MEAL','REST'].includes(input.action)), 400, 'Marcación inválida');
    try { new Intl.DateTimeFormat('en', { timeZone: input.zone }); } catch { check(false, 400, 'Zona horaria inválida'); }
