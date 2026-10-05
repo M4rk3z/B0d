@@ -26,7 +26,7 @@ async function api(path, options = {}) {
 }
 const write = (path, data, method = 'POST') => api(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
 function visible(logged) {
-    if (!logged) { scheduleRows=[];scheduleId=null;scheduleRevision=null;scheduleDirty=false;weekDraft=[];$('day-dialog').close();$('schedule-form').reset();$('schedule-days').replaceChildren();$('schedule-list').replaceChildren(); }
+    if (!logged) { $('password-dialog').close();finishConfirm(false);scheduleRows=[];scheduleId=null;scheduleRevision=null;scheduleDirty=false;weekDraft=[];$('day-dialog').close();$('schedule-form').reset();$('schedule-days').replaceChildren();$('schedule-list').replaceChildren(); }
   if (!logged) { $('device-token').value = ''; $('device-secret').hidden = true; $('devices').replaceChildren(); $('punches').replaceChildren(); }
   $('login').hidden = logged; $('workspace').hidden = !logged; $('logout').hidden = !logged;
   if (!logged) { current = null; workerRows = []; $('profile').close(); $('profile-content').replaceChildren(); $('workers').replaceChildren(); $('users').replaceChildren(); $('identity').textContent = ''; $('account').reset(); $('worker').reset(); $('worker-search').value = ''; $('export-count').textContent = ''; }
@@ -90,13 +90,14 @@ async function loadUsers() {
     for (const value of ['User', 'Admin']) { const option = element('option', value); option.value = value; role.append(option); } role.value = user.role;
     const active = document.createElement('input'); active.type = 'checkbox'; active.checked = user.active;
     const label = element('label', 'Activo', 'check'); label.append(active);
-    const password = document.createElement('input'); password.type = 'password'; password.placeholder = 'Nueva contraseña (opcional)'; password.minLength = 12; password.maxLength = 256; password.autocomplete = 'new-password'; password.setAttribute('aria-label', `Nueva contraseña de ${user.username}`);
+    const password = element('button', 'Cambiar contraseña', 'secondary'); password.type='button';
+    password.addEventListener('click',()=>openPassword(user));
     const button = element('button', 'Guardar cambios'); form.append(role, label, password, button);
     form.addEventListener('submit', async event => {
       event.preventDefault(); button.disabled = true; $('status').textContent = '';
       try {
-        await write(`/api/users/${user.id}`, { role: role.value, active: active.checked, ...(password.value ? { password: password.value } : {}) }, 'PATCH');
-        password.value = '';
+        await write(`/api/users/${user.id}`, { role: role.value, active: active.checked }, 'PATCH');
+
         if (user.id === current.id) { visible(false); $('status').textContent = 'Cambios guardados. Inicia sesión de nuevo.'; }
         else { await loadUsers(); $('status').textContent = 'Usuario actualizado'; }
       } catch (error) { $('status').textContent = error.message; } finally { button.disabled = false; }
@@ -139,7 +140,7 @@ async function loadDevices() {
     if (row.active) {
       const revoke = element('button', 'Revocar'); revoke.type = 'button';
       revoke.addEventListener('click', async () => {
-        if (!confirm(`¿Revocar la conexión de ${row.name}? Los registros guardados se conservarán.`)) return;
+        if (!await confirmAction(`¿Revocar la conexión de ${row.name}? Los registros guardados se conservarán.`)) return;
         revoke.disabled = true;
         try { await write(`/api/devices/${row.id}`, {}, 'DELETE'); $('device-token').value = ''; $('device-secret').hidden = true; await loadDevices(); }
         catch (error) { $('status').textContent = error.message; revoke.disabled = false; }
@@ -147,7 +148,7 @@ async function loadDevices() {
     }
     const remove = element('button', 'Eliminar', 'danger'); remove.type = 'button';
     remove.addEventListener('click', async () => {
-      if (!confirm(`¿Eliminar ${row.name}? Se bloqueará su conexión y se conservarán sus marcaciones.`)) return;
+      if (!await confirmAction(`¿Eliminar ${row.name}? Se bloqueará su conexión y se conservarán sus marcaciones.`)) return;
       remove.disabled = true;
       try { await write(`/api/devices/${row.id}/remove`, {}, 'DELETE'); $('device-token').value = ''; $('device-secret').hidden = true; await loadDevices(); }
       catch (error) { $('status').textContent = error.message; remove.disabled = false; }
@@ -163,7 +164,7 @@ async function loadPunches(reset = true) {
   const page = await api(`/api/punches?offset=${punchOffset}`);
   if (reset && !page.rows.length) $('punches').append(element('p', 'Todavía no hay marcaciones sincronizadas'));
   for (const row of page.rows) {
-    const card = element('article', '', 'card'); card.append(element('h3', row.worker_name), element('p', row.worker_code, 'muted'), element('span', kindLabel(row), 'pill'), element('p', new Date(Number(row.occurred_at)).toLocaleString('es', { timeZone: row.zone_id })), element('p', row.zone_id, 'muted')); $('punches').append(card);
+    const card = element('article', '', 'card'); card.append(element('h3', row.worker_name), element('p', row.worker_code, 'muted'), element('span', kindLabel(row), 'pill punch-'+row.kind.toLowerCase()), element('p', new Date(Number(row.occurred_at)).toLocaleString('es', { timeZone: row.zone_id })), element('p', row.zone_id, 'muted')); $('punches').append(card);
   }
   punchOffset = page.next; $('more-punches').hidden = page.next === null;
 }
@@ -228,8 +229,8 @@ $('day-form').addEventListener('submit',async event=>{
 });
 function editSchedule(row=null){
  if(scheduleDirty&&!confirm('¿Descartar cambios sin guardar?'))return;
- scheduleId=row?.id||null;scheduleRevision=row?.revision||null;const value=row?.definition||{name:'',zone:'America/Mexico_City',markBreaks:false,days:[]};
- $('schedule-name').value=value.name;if(![...$('schedule-zone').options].some(o=>o.value===value.zone)){const option=element('option',value.zone);option.value=value.zone;$('schedule-zone').append(option);}$('schedule-zone').value=value.zone;$('schedule-mark').checked=value.markBreaks;
+ scheduleId=row?.id||null;scheduleRevision=row?.revision||null;$('delete-schedule').hidden=!scheduleId;const value=row?.definition||{name:'',zone:Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC',markBreaks:false,days:[]};
+ $('schedule-name').value=value.name;$('schedule-zone').value=value.zone;$('schedule-mark').checked=value.markBreaks;
  weekDraft=dayNames.map((_,i)=>{const d=value.days.find(d=>d.weekday===i+1);return {weekday:i+1,selected:Boolean(d),configured:Boolean(d),value:d?{start:d.start,end:d.end,breaks:structuredClone(d.breaks)}:null};});
  $('schedule-message').textContent='';$('save-schedule').textContent=scheduleId?'Guardar cambios':'Crear horario';scheduleDirty=false;renderWeek();schedulePreview();renderSchedules();
 }
@@ -246,9 +247,35 @@ $('schedule-form').addEventListener('submit',async event=>{
 async function profileSchedule(worker){
  const [schedules,assignments]=await Promise.all([api('/api/schedules'),api('/api/schedule-assignments')]);
  const box=element('section','','profile-schedule');box.append(element('h3','Horario'));const last=assignments.find(a=>a.worker_id===worker.id);box.append(element('p',last?`${last.name} · v${last.revision} · desde ${last.effective_date}`:'Sin horario web asignado','muted'));
- const form=document.createElement('form');const select=document.createElement('select');select.setAttribute('aria-label','Horario');for(const row of schedules){const option=element('option',`${row.definition.name} · v${row.revision}`);option.value=row.id;select.append(option);}if(last)select.value=last.schedule_id;
+ const form=document.createElement('form');const select=document.createElement('select');select.setAttribute('aria-label','Horario');for(const row of schedules){const option=element('option',`${row.definition.name} · v${row.revision}`);option.value=row.id;select.append(option);}if(last && schedules.some(s=>s.id===last.schedule_id))select.value=last.schedule_id;
  const date=document.createElement('input');date.type='date';date.required=true;date.setAttribute('aria-label','Fecha de inicio');const tomorrow=new Date();tomorrow.setDate(tomorrow.getDate()+1);date.value=`${tomorrow.getFullYear()}-${String(tomorrow.getMonth()+1).padStart(2,'0')}-${String(tomorrow.getDate()).padStart(2,'0')}`;
  const label=element('label','Aplicar desde (a partir de mañana)');label.append(date);const save=element('button','Guardar asignación');save.disabled=!schedules.length;const message=element('p','');message.setAttribute('role','status');form.append(select,label,save,message);
  form.addEventListener('submit',async event=>{event.preventDefault();save.disabled=true;try{await write('/api/schedule-assignments',{workerId:worker.id,scheduleId:select.value,date:date.value});message.textContent='Asignación guardada. Se enviará a la tablet en la próxima sincronización.';}catch(error){message.textContent=error.message;}finally{save.disabled=!schedules.length;}});
  const edit=element('button','Editar horario');edit.type='button';edit.disabled=!schedules.length;edit.addEventListener('click',async()=>{try{scheduleRows=await api('/api/schedules');const row=scheduleRows.find(row=>row.id===select.value);$('profile').close();showView('schedules');editSchedule(row);}catch(error){message.textContent=error.message;}});box.append(form,edit);return box;
 }
+
+let confirmResolve=null,passwordUser=null;
+function confirmAction(message){
+ if(confirmResolve)return Promise.resolve(false);
+ $('confirm-message').textContent=message;$('confirm-dialog').showModal();$('confirm-no').focus();
+ return new Promise(resolve=>{confirmResolve=resolve;});
+}
+function finishConfirm(value){const resolve=confirmResolve;confirmResolve=null;$('confirm-dialog').close();if(resolve)resolve(value);}
+$('confirm-no').addEventListener('click',()=>finishConfirm(false));$('confirm-yes').addEventListener('click',()=>finishConfirm(true));
+$('confirm-dialog').addEventListener('cancel',event=>{event.preventDefault();finishConfirm(false);});
+function openPassword(user){passwordUser=user;$('password-form').reset();$('password-message').textContent='';$('password-title').textContent='Contraseña · '+user.username;$('password-dialog').showModal();$('new-password').focus();}
+$('password-cancel').addEventListener('click',()=>$('password-dialog').close());
+$('password-dialog').addEventListener('close',()=>{$('password-form').reset();passwordUser=null;});
+submit('password-form',async()=>{
+ if($('new-password').value!==$('repeat-password').value){$('password-message').textContent='Las contraseñas no coinciden';return;}
+ const user=passwordUser;
+ try{await write('/api/users/'+user.id,{password:$('new-password').value},'PATCH');$('password-dialog').close();
+ if(user.id===current.id){visible(false);$('status').textContent='Contraseña actualizada. Inicia sesión de nuevo.';}else $('status').textContent='Contraseña actualizada';
+ }catch(error){$('password-message').textContent=error.message;}
+});
+$('delete-schedule').addEventListener('click',async()=>{
+ const id=scheduleId;if(!id||!await confirmAction('¿Eliminar este horario del catálogo? Se conservarán las asignaciones y jornadas que ya lo utilizan.'))return;
+ $('delete-schedule').disabled=true;
+ try{await write('/api/schedules/'+id,{},'DELETE');scheduleDirty=false;scheduleRows=await api('/api/schedules');editSchedule();$('schedule-message').textContent='Horario eliminado';}
+ catch(error){$('schedule-message').textContent=error.message;}finally{$('delete-schedule').disabled=false;}
+});

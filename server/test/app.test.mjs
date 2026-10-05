@@ -75,6 +75,10 @@ test('Fundación web con PostgreSQL embebido', async t => {
       assert.equal((await request(`/api/users/${user.id}`, 'PATCH', { role: 'User', active: true, password: 'new-password-only-123' })).status, 200);
       assert.equal((await request('/api/login', 'POST', { user: 'reader', password: 'reader-password-123' })).status, 401);
       assert.equal((await request('/api/login', 'POST', { user: 'reader', password: 'new-password-only-123' })).status, 200);
+      assert.equal((await request(`/api/users/${user.id}`, 'PATCH', { password: 'popup-password-only-123' })).status, 200);
+      const preserved = (await db.query('SELECT role,active FROM b0d_users WHERE id=$1',[user.id])).rows[0];
+      assert.equal(preserved.role,'User'); assert.equal(preserved.active,true);
+      assert.equal((await request('/api/login','POST',{user:'reader',password:'popup-password-only-123'})).status,200);
       await migrate(pool); await bootstrapAdmin(pool, 'replacement', 'replacement-password-123');
       assert.equal((await request('/api/me')).status, 200);
       assert.equal((await db.query("SELECT count(*) AS total FROM b0d_users WHERE role='Admin'")).rows[0].total, 1);

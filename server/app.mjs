@@ -27,7 +27,7 @@ export async function migrate(pool) {
     await client.query('SELECT pg_advisory_xact_lock(80405001)');
     await client.query(await readFile(new URL('./schema.sql', import.meta.url), 'utf8'));
     const version = (await client.query('SELECT max(version) AS version FROM b0d_schema_version')).rows[0].version;
-    if (![1, 2, 3, 4, 5, 6, 7].includes(version)) throw new Error('Unsupported database version');
+    if (![1, 2, 3, 4, 5, 6, 7, 8].includes(version)) throw new Error('Unsupported database version');
     await client.query(await readFile(new URL('./users.sql', import.meta.url), 'utf8'));
     await client.query(await readFile(new URL('./sync.sql', import.meta.url), 'utf8'));
     await client.query(await readFile(new URL('./pairing.sql', import.meta.url), 'utf8'));
@@ -35,6 +35,8 @@ export async function migrate(pool) {
     await client.query('INSERT INTO b0d_schema_version VALUES(5) ON CONFLICT DO NOTHING');
     await client.query(await readFile(new URL('./schedules.sql', import.meta.url), 'utf8'));
     await client.query(await readFile(new URL('./assignments.sql', import.meta.url), 'utf8'));
+    await client.query('ALTER TABLE b0d_schedules ADD COLUMN IF NOT EXISTS deleted BOOLEAN NOT NULL DEFAULT FALSE');
+    await client.query('INSERT INTO b0d_schema_version VALUES(8) ON CONFLICT DO NOTHING');
     await client.query('COMMIT');
   } catch (error) { await client.query('ROLLBACK'); throw error; }
   finally { client.release(); }
@@ -152,7 +154,8 @@ export function createApplication(pool, { origin }) {
       }
       if (path.startsWith('/api/users/') && req.method === 'PATCH') {
         requireAdmin(); const id = path.slice('/api/users/'.length); const input = await body(req);
-        requireValue(/^[a-f0-9-]{36}$/.test(id) && input && ['Admin', 'User'].includes(input.role) && typeof input.active === 'boolean', 'Datos inválidos');
+        const passwordOnly = input && input.role === undefined && input.active === undefined && typeof input.password === 'string';
+        requireValue(/^[a-f0-9-]{36}$/.test(id) && input && (passwordOnly || (['Admin', 'User'].includes(input.role) && typeof input.active === 'boolean')), 'Datos inválidos');
         requireValue(input.password === undefined || (typeof input.password === 'string' && input.password.length >= 12 && input.password.length <= 256), 'Contraseña: entre 12 y 256 caracteres');
         const client = await pool.connect();
         try {
@@ -162,6 +165,7 @@ export function createApplication(pool, { origin }) {
           if (!actor?.active || actor.role !== 'Admin') throw new HttpError(403, 'Solo administradores');
           const target = (await client.query('SELECT * FROM b0d_users WHERE id=$1', [id])).rows[0];
           if (!target) throw new HttpError(404, 'Usuario no encontrado');
+          if(passwordOnly) { input.role=target.role; input.active=target.active; }
           if (target.active && target.role === 'Admin' && (!input.active || input.role !== 'Admin')) {
             const count = (await client.query("SELECT count(*) AS total FROM b0d_users WHERE active AND role='Admin'")).rows[0].total;
             if (Number(count) <= 1) throw new HttpError(409, 'Debe quedar al menos un administrador activo');

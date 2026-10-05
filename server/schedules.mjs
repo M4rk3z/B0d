@@ -11,7 +11,7 @@ export async function scheduleRoute(pool, req, path, current, input) {
   const client=await pool.connect();
   try {
    await client.query('BEGIN');
-   const schedule=(await client.query('SELECT revision,definition FROM b0d_schedules WHERE id=$1 FOR UPDATE',[input.scheduleId])).rows[0];
+   const schedule=(await client.query('SELECT revision,definition FROM b0d_schedules WHERE id=$1 AND NOT deleted FOR UPDATE',[input.scheduleId])).rows[0];
    if(!schedule) fail(404,'Horario no encontrado');
    const allowed=(await client.query("SELECT $1::date > (now() AT TIME ZONE $2)::date AS ok",[input.date,schedule.definition.zone])).rows[0].ok;
    if(!allowed) fail(400,'Elige una fecha a partir de mañana para conservar las jornadas iniciadas');
@@ -22,9 +22,10 @@ export async function scheduleRoute(pool, req, path, current, input) {
    await client.query('COMMIT');return {id};
   }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
  }
- if(req.method==='GET' && path==='/api/schedules') return (await pool.query("SELECT id,revision,definition,updated_at FROM b0d_schedules ORDER BY definition->>'name',id")).rows;
+ if(req.method==='GET' && path==='/api/schedules') return (await pool.query("SELECT id,revision,definition,updated_at FROM b0d_schedules WHERE NOT deleted ORDER BY definition->>'name',id")).rows;
  const creating=req.method==='POST' && path==='/api/schedules';
  const id=creating?randomUUID():path.slice('/api/schedules/'.length);
+ if(req.method==='DELETE' && /^[a-f0-9-]{36}$/.test(id)) {await pool.query('UPDATE b0d_schedules SET deleted=true WHERE id=$1',[id]);return {ok:true};}
  if(!creating && (req.method!=='PATCH' || !/^[a-f0-9-]{36}$/.test(id))) fail(400,'Horario inválido');
  let definition;
  try { definition=validateSchedule(input); } catch(error) { fail(400,error.message); }
@@ -35,7 +36,7 @@ export async function scheduleRoute(pool, req, path, current, input) {
   let revision=1;
   if(creating) await client.query('INSERT INTO b0d_schedules(id,revision,definition) VALUES($1,1,$2)',[id,JSON.stringify(definition)]);
   else {
-   const current=(await client.query('SELECT revision FROM b0d_schedules WHERE id=$1 FOR UPDATE',[id])).rows[0];
+   const current=(await client.query('SELECT revision FROM b0d_schedules WHERE id=$1 AND NOT deleted FOR UPDATE',[id])).rows[0];
    if(!current) fail(404,'Horario no encontrado');
    if(current.revision!==input.revision) fail(409,'Otra persona modificó este horario. Vuelve a seleccionarlo para cargar sus cambios');
    revision=current.revision+1;

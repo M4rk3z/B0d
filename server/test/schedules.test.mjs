@@ -48,5 +48,12 @@ test('horarios persistentes con versiones y control de permisos',async()=>{
   const reassigned=await scheduleRoute(pool,{method:'GET'},'/api/schedule-assignments',admin);assert.equal(reassigned.length,1);assert.equal(reassigned[0].revision,2);assert.notEqual(reassigned[0].id,assigned[0].id);
   await migrate(pool);const rows=await scheduleRoute(pool,{method:'GET'},'/api/schedules',admin);assert.equal(rows.length,1);assert.equal(rows[0].revision,2);
   const invalid=base();invalid.days[0].end='08:00';await assert.rejects(()=>scheduleRoute(pool,{method:'POST'},'/api/schedules',admin,invalid),error=>error.status===400);
+  await assert.rejects(()=>scheduleRoute(pool,{method:'DELETE'},`/api/schedules/${created.id}`,{...admin,role:'User'}),e=>e.status===403);
+  await scheduleRoute(pool,{method:'DELETE'},`/api/schedules/${created.id}`,admin);
+  assert.equal((await scheduleRoute(pool,{method:'GET'},'/api/schedules',admin)).length,0);
+  assert.equal((await db.query('SELECT count(*) AS n FROM b0d_schedule_versions')).rows[0].n,2);
+  assert.equal((await scheduleRoute(pool,{method:'GET'},'/api/schedule-assignments',admin)).length,1);
+  await assert.rejects(()=>scheduleRoute(pool,{method:'POST'},'/api/schedule-assignments',admin,assignment),e=>e.status===404);
+  await assert.rejects(()=>scheduleRoute(pool,{method:'PATCH'},`/api/schedules/${created.id}`,admin,{...base(),revision:2}),e=>e.status===404);
  } finally {await db.close();}
 });
