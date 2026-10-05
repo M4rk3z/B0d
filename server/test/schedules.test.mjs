@@ -34,7 +34,13 @@ test('horarios persistentes con versiones y control de permisos',async()=>{
   const future=new Date(Date.now()+172800000).toISOString().slice(0,10);
   const assignment={workerId,scheduleId:created.id,date:future};
   await scheduleRoute(pool,{method:'POST'},'/api/schedule-assignments',admin,assignment);
-  await assert.rejects(()=>scheduleRoute(pool,{method:'POST'},'/api/schedule-assignments',admin,{...assignment,date:'2020-01-01'}),e=>e.status===400);
+  const today=(await db.query("SELECT to_char((now() AT TIME ZONE 'America/Mexico_City')::date,'YYYY-MM-DD') AS date")).rows[0].date;
+  for(const date of ['2020-01-01',today]) {
+   await scheduleRoute(pool,{method:'POST'},'/api/schedule-assignments',admin,{...assignment,date});
+   const saved=await scheduleRoute(pool,{method:'GET'},'/api/schedule-assignments',admin);
+   assert.ok(saved.some(row=>row.worker_id===workerId && row.effective_date===date));
+  }
+  await db.query('DELETE FROM b0d_schedule_assignments WHERE worker_id=$1 AND effective_date < $2::date',[workerId,future]);
   await assert.rejects(()=>scheduleRoute(pool,{method:'POST'},'/api/schedule-assignments',admin,{...assignment,date:'2099-02-30'}),e=>e.status===400);
   await scheduleRoute(pool,{method:'POST'},'/api/schedule-assignments',{...admin,role:'User'},assignment);
   const edited=base();edited.days[0].end='18:00';edited.revision=1;

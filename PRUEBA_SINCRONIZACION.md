@@ -39,7 +39,7 @@ Sustituye la clave manual del procedimiento anterior: en Tablet pulsa Generar c�
 ## Alpha4: horarios sincronizados
 1. Actualizar APK sin desinstalar. Mantener la vinculación actual.
 2. En web Horarios, seleccionar días (naranja), abrir Configurar horas, ajustar AM/PM y pausas, Guardar día (verde) y Crear horario/Guardar cambios.
-3. Colaboradores → Ver perfil → Horario: elegir horario y fecha a partir de mañana, Guardar asignación.
+3. Colaboradores → Ver perfil → Horario: elegir horario y fecha de inicio (puede ser hoy, pasada o futura), Guardar asignación.
 4. Mantener APK abierta con red o pulsar Sincronizar ahora. Verificar el horario recibido en el colaborador de la tablet y probar su aplicación en la fecha elegida.
 5. Editar el horario conserva versiones anteriores. Para aplicar la versión nueva, guardar una nueva asignación desde el perfil con fecha futura. Las marcaciones de jornadas previas conservan su horario.
 6. Sin red, la tablet conserva lo último recibido. Una asignación recibida tarde no se aplica retroactivamente: se mueve al día actual si está sin marcaciones, o al siguiente si ya comenzó. Revisar el resumen local para ver la fecha aplicada.

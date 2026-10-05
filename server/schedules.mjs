@@ -13,8 +13,6 @@ export async function scheduleRoute(pool, req, path, current, input) {
    await client.query('BEGIN');
    const schedule=(await client.query('SELECT revision,definition FROM b0d_schedules WHERE id=$1 AND NOT deleted FOR UPDATE',[input.scheduleId])).rows[0];
    if(!schedule) fail(404,'Horario no encontrado');
-   const allowed=(await client.query("SELECT $1::date > (now() AT TIME ZONE $2)::date AS ok",[input.date,schedule.definition.zone])).rows[0].ok;
-   if(!allowed) fail(400,'Elige una fecha a partir de maÃ±ana para conservar las jornadas iniciadas');
    const worker=(await client.query('SELECT id FROM b0d_workers WHERE id=$1 AND active FOR UPDATE',[input.workerId])).rows[0];
    if(!worker) fail(400,'Colaborador no disponible');
    const id=randomUUID();
