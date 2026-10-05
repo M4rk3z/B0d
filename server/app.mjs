@@ -3,6 +3,7 @@ import { randomBytes, randomUUID, createHash, scryptSync, timingSafeEqual } from
 import { readFile } from 'node:fs/promises';
 import { deviceRoute, manageDevices, redeemPairing } from './sync.mjs';
 import { scheduleRoute } from './schedules.mjs';
+import {demoStatus,seedDemo} from './demo-data.mjs';
 import { loadReport,headers as reportHeaders,cells as reportCells,excelReport,pdfReport } from './reports.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -126,6 +127,11 @@ export function createApplication(pool, { origin }) {
       }
       const current = await session(req);
       const { tokenHash } = current;
+        if(path==='/api/demo-data'){
+          if(current.role!=='Admin')throw new HttpError(403,'Solo administradores');
+          if(req.method==='GET'){json(200,await demoStatus(pool));return;}
+          if(req.method==='POST'){const input=await body(req);requireValue(input?.confirmation==='DEMO-15','Confirma la carga de prueba');json(200,await seedDemo(pool,current.id));return;}
+        }
       if (req.method === 'GET' && path === '/api/reports') {
         const params=new URL(req.url,origin).searchParams;const report=await loadReport(pool,params);const format=params.get('format')||'json';
         if(format==='json'){json(200,{...report,headers:reportHeaders(report.type),table:report.rows.map(row=>reportCells(row,report.type))});return;}

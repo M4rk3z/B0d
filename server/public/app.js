@@ -37,6 +37,7 @@ async function load() {
   current = await api('/api/me'); visible(true);
   showView('accounts');
   const admin = current.role === 'Admin';
+    $('demo-seed').hidden = !admin;
   $('tablet-nav').hidden = !admin;
   $('schedule-nav').hidden = !admin;
   $('identity').textContent = `${current.username} · ${current.role}`;
@@ -303,3 +304,10 @@ async function runReport(format){
 }
 $('report-form').addEventListener('submit',event=>{event.preventDefault();runReport('json');});$('report-xls').addEventListener('click',()=>runReport('xls'));$('report-pdf').addEventListener('click',()=>runReport('pdf'));
 for(const id of ['report-from','report-to','report-type'])$(id).addEventListener('change',()=>{$('report-preview').replaceChildren();$('report-status').textContent='';});
+
+$('demo-seed').addEventListener('click',async()=>{
+ if(!await confirmAction('Cargar 15 colaboradores DEMO inactivos, 3 horarios y 75 jornadas del 28 de septiembre al 2 de octubre de 2026. Incluye 25 horas extras. No modifica personal real ni duplica una carga anterior.'))return;
+ $('demo-seed').disabled=true;
+ try{const data=await write('/api/demo-data',{confirmation:'DEMO-15'});$('report-from').value=data.from;$('report-to').value=data.to;await loadWorkers();await loadPunches();await runReport('json');$('report-status').textContent=`${data.alreadyLoaded?'Datos de prueba ya existentes':'Datos de prueba cargados'}: ${data.workers} colaboradores · ${data.schedules} horarios · ${data.days} jornadas · ${data.punches} marcaciones · ${data.overtimeHours} horas extras`;}
+ catch(error){$('report-status').textContent=error.message;}finally{$('demo-seed').disabled=false;}
+});
