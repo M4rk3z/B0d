@@ -903,7 +903,8 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         if (!requireAdmin()) return;
         screen(R.string.schedules_title);
 
-        button(R.string.create_schedule, this::showCreateSchedule);
+        if (!new CloudSync(this).linked()) button(R.string.create_schedule, this::showCreateSchedule);
+        else text("Crea y edita los horarios en la web.", 16);
         button(R.string.back_admin, this::showAdmin);
         if (rows.isEmpty()) text(R.string.no_schedules, 18);
         for (SchedulesRepository.Schedule schedule : rows) {
@@ -991,6 +992,10 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
     }
     private void showAssignSchedule(WorkersDb.Worker worker) {
         if (!requireAdmin() || busy) return;
+        if (new CloudSync(this).linked()) {
+            screen(R.string.assign_schedule); text("Asigna el horario desde el perfil del colaborador en la web.",18);
+            button(R.string.back_admin,this::showAdmin); return;
+        }
         runScheduleTask(db -> {
             SchedulesRepository repo = new SchedulesRepository(db.getReadableDatabase());
             return new ScheduleAssignmentData(repo.list(), repo.assignmentHistory(worker.id));

@@ -35,3 +35,12 @@ Pruebas HTTP contra PostgreSQL embebido: autorización, importación repetida, c
 
 ## Actualización alpha3: código corto
 Sustituye la clave manual del procedimiento anterior: en Tablet pulsa Generar código y escribe los 8 dígitos en la APK alpha3. Vence a los 10 minutos y admite un solo uso; la vinculación permanece después. Si el canje se interrumpe, revoca ese dispositivo y genera otro código. Las vinculaciones existentes siguen funcionando sin cambios.
+
+## Alpha4: horarios sincronizados
+1. Actualizar APK sin desinstalar. Mantener la vinculación actual.
+2. En web Horarios, seleccionar días (naranja), abrir Configurar horas, ajustar AM/PM y pausas, Guardar día (verde) y Crear horario/Guardar cambios.
+3. Colaboradores → Ver perfil → Horario: elegir horario y fecha a partir de mañana, Guardar asignación.
+4. Mantener APK abierta con red o pulsar Sincronizar ahora. Verificar el horario recibido en el colaborador de la tablet y probar su aplicación en la fecha elegida.
+5. Editar el horario conserva versiones anteriores. Para aplicar la versión nueva, guardar una nueva asignación desde el perfil con fecha futura. Las marcaciones de jornadas previas conservan su horario.
+6. Sin red, la tablet conserva lo último recibido. Una asignación recibida tarde no se aplica retroactivamente: se mueve al día actual si está sin marcaciones, o al siguiente si ya comenzó. Revisar el resumen local para ver la fecha aplicada.
+Las notas anteriores que indican horarios sin sincronizar quedan superadas por alpha4. Los horarios creados localmente antes de esta fase se conservan, pero no se importan automáticamente a la web; crear/asignar su equivalente web. Biometría sigue local.

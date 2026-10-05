@@ -4,6 +4,8 @@ import { PGlite } from '@electric-sql/pglite';
 import { migrate,bootstrapAdmin } from '../app.mjs';
 import { scheduleRoute } from '../schedules.mjs';
 import { validateSchedule } from '../public/schedule-rules.js';
+import { createHash,randomUUID } from 'node:crypto';
+import { deviceRoute } from '../sync.mjs';
 const base=()=>({name:'Mañana',zone:'America/Mexico_City',markBreaks:false,days:[{weekday:1,start:'08:00',end:'17:00',breaks:[{kind:'Comida',start:'13:00',end:'14:00'}]}]});
 test('horas efectivas y modo de marcación',()=>{
  const value=validateSchedule(base());assert.equal(value.weeklyMinutes,480);assert.equal(value.days[0].effectiveMinutes,480);
@@ -28,10 +30,22 @@ test('horarios persistentes con versiones y control de permisos',async()=>{
   const admin=(await db.query('SELECT id,role FROM b0d_users')).rows[0];
   await assert.rejects(()=>scheduleRoute(pool,{method:'POST'},'/api/schedules',{...admin,role:'User'},base()),error=>error.status===403);
   const created=await scheduleRoute(pool,{method:'POST'},'/api/schedules',admin,base());assert.equal(created.revision,1);
+  const workerId=randomUUID();await db.query('INSERT INTO b0d_workers(id,code,name) VALUES($1,$2,$3)',[workerId,'SCHED-1','Prueba']);
+  const future=new Date(Date.now()+172800000).toISOString().slice(0,10);
+  const assignment={workerId,scheduleId:created.id,date:future};
+  await scheduleRoute(pool,{method:'POST'},'/api/schedule-assignments',admin,assignment);
+  await assert.rejects(()=>scheduleRoute(pool,{method:'POST'},'/api/schedule-assignments',admin,{...assignment,date:'2020-01-01'}),e=>e.status===400);
+  await assert.rejects(()=>scheduleRoute(pool,{method:'POST'},'/api/schedule-assignments',admin,{...assignment,date:'2099-02-30'}),e=>e.status===400);
+  await assert.rejects(()=>scheduleRoute(pool,{method:'POST'},'/api/schedule-assignments',{...admin,role:'User'},assignment),e=>e.status===403);
   const edited=base();edited.days[0].end='18:00';edited.revision=1;
   const updated=await scheduleRoute(pool,{method:'PATCH'},`/api/schedules/${created.id}`,admin,edited);assert.equal(updated.revision,2);assert.equal(updated.definition.weeklyMinutes,540);
   await assert.rejects(()=>scheduleRoute(pool,{method:'PATCH'},`/api/schedules/${created.id}`,admin,edited),error=>error.status===409);
   const versions=(await db.query('SELECT revision,definition FROM b0d_schedule_versions ORDER BY revision')).rows;assert.equal(versions.length,2);assert.equal(versions[0].definition.weeklyMinutes,480);
+  const assigned=await scheduleRoute(pool,{method:'GET'},'/api/schedule-assignments',admin);assert.equal(assigned[0].revision,1);
+  const token='b'.repeat(64);await db.query('INSERT INTO b0d_devices(id,name,token_hash) VALUES($1,$2,$3)',[randomUUID(),'Test',createHash('sha256').update(token).digest('hex')]);
+  const snapshot=await deviceRoute(pool,{method:'GET',headers:{authorization:`Bearer ${token}`}},'/api/device/schedules',null);assert.equal(snapshot.versions.length,2);assert.equal(snapshot.assignments[0].revision,1);assert.equal(snapshot.assignments[0].effective_date,future);
+  await scheduleRoute(pool,{method:'POST'},'/api/schedule-assignments',admin,assignment);
+  const reassigned=await scheduleRoute(pool,{method:'GET'},'/api/schedule-assignments',admin);assert.equal(reassigned.length,1);assert.equal(reassigned[0].revision,2);assert.notEqual(reassigned[0].id,assigned[0].id);
   await migrate(pool);const rows=await scheduleRoute(pool,{method:'GET'},'/api/schedules',admin);assert.equal(rows.length,1);assert.equal(rows[0].revision,2);
   const invalid=base();invalid.days[0].end='08:00';await assert.rejects(()=>scheduleRoute(pool,{method:'POST'},'/api/schedules',admin,invalid),error=>error.status===400);
  } finally {await db.close();}

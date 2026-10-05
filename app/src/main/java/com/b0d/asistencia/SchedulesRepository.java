@@ -12,6 +12,10 @@ import java.util.UUID;
 final class SchedulesRepository {
     private final SQLiteDatabase db;
     SchedulesRepository(SQLiteDatabase db) { this.db = db; }
+    private String display(String id, String fallback) {
+        if (id.startsWith("web:")) try (Cursor c = db.rawQuery("SELECT display_name FROM cloud_schedule_names WHERE local_id=?",new String[]{id})) { if(c.moveToFirst())return c.getString(0); }
+        return fallback;
+    }
     static final class Schedule {
         final String id, name, zone;
         final boolean markBreaks;
@@ -23,13 +27,13 @@ final class SchedulesRepository {
     List<Schedule> list() {
         List<Schedule> result = new ArrayList<>();
         try (Cursor c = db.query("schedules", new String[]{"id", "name", "zone_id", "mark_breaks"}, null, null, null, null, "name COLLATE NOCASE")) {
-            while (c.moveToNext()) result.add(new Schedule(c.getString(0), c.getString(1), c.getString(2), c.getInt(3) == 1, days(c.getString(0))));
+            while (c.moveToNext()) result.add(new Schedule(c.getString(0), display(c.getString(0),c.getString(1)), c.getString(2), c.getInt(3) == 1, days(c.getString(0))));
         }
         return result;
     }
     Schedule get(String id) {
         try (Cursor c = db.query("schedules", new String[]{"id","name","zone_id","mark_breaks"}, "id=?", new String[]{id}, null, null, null)) {
-            return c.moveToFirst() ? new Schedule(c.getString(0),c.getString(1),c.getString(2),c.getInt(3)==1,days(id)) : null;
+            return c.moveToFirst() ? new Schedule(c.getString(0),display(c.getString(0),c.getString(1)),c.getString(2),c.getInt(3)==1,days(id)) : null;
         }
     }
     private List<ScheduleRules.Day> days(String schedule) {
@@ -102,8 +106,8 @@ final class SchedulesRepository {
         } finally { db.endTransaction(); }
     }
     String assignmentSummary(String workerId) {
-        try (Cursor c = db.rawQuery("SELECT s.name, a.effective_date FROM schedule_assignments a JOIN schedules s ON s.id = a.schedule_id WHERE a.worker_id = ? ORDER BY a.effective_date DESC LIMIT 1", new String[]{workerId})) {
-            return c.moveToFirst() ? c.getString(0) + " · " + c.getString(1) : null;
+        try (Cursor c = db.rawQuery("SELECT s.name, a.effective_date,s.id FROM schedule_assignments a JOIN schedules s ON s.id = a.schedule_id WHERE a.worker_id = ? ORDER BY a.effective_date DESC LIMIT 1", new String[]{workerId})) {
+            return c.moveToFirst() ? display(c.getString(2),c.getString(0)) + " · " + c.getString(1) : null;
         }
     }
     List<String> assignmentHistory(String workerId) {

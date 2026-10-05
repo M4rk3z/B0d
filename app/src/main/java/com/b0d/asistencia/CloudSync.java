@@ -93,6 +93,7 @@ final class CloudSync {
                 }
                 db.setTransactionSuccessful();
             } finally { db.endTransaction(); }
+            CloudSchedules.apply(db, request("/api/device/schedules", null, credential));
             long pending;
             try (Cursor c = db.rawQuery("SELECT count(*) FROM punches p WHERE NOT EXISTS(SELECT 1 FROM cloud_receipts r WHERE r.event_id=p.event_id)", null)) { c.moveToFirst(); pending = c.getLong(0); }
             prefs.edit().putString("status", "Última sincronización: " + java.time.LocalTime.now().withNano(0) + " · Pendientes: " + pending).apply();

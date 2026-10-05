@@ -13,6 +13,9 @@ export async function deviceRoute(pool, req, path, input) {
   let result;
   if (req.method === 'GET' && path === '/api/device/workers') {
    result = { deviceId: device.id, workers: (await client.query('SELECT id,code,name,active FROM b0d_workers ORDER BY code')).rows };
+  } else if (req.method === 'GET' && path === '/api/device/schedules') {
+   result = { versions: (await client.query('SELECT schedule_id,revision,definition FROM b0d_schedule_versions ORDER BY schedule_id,revision')).rows,
+    assignments: (await client.query("SELECT id,worker_id,schedule_id,revision,to_char(effective_date,'YYYY-MM-DD') AS effective_date FROM b0d_schedule_assignments ORDER BY effective_date,id")).rows };
   } else if (req.method === 'POST' && path === '/api/device/worker') {
    check(uuid(input?.id) && typeof input.code === 'string' && /^[A-Z0-9][A-Z0-9_-]{0,19}$/.test(input.code) && typeof input.name === 'string' && input.name.trim().length > 0 && input.name.length <= 100 && !/[\x00-\x1f\x7f]/.test(input.name) && typeof input.active === 'boolean', 400, 'Colaborador inválido');
    let worker = (await client.query('SELECT w.id,w.code,w.name,w.active FROM b0d_device_workers m JOIN b0d_workers w ON w.id=m.worker_id WHERE m.device_id=$1 AND m.local_id=$2', [device.id,input.id])).rows[0];

@@ -26,7 +26,7 @@ async function api(path, options = {}) {
 }
 const write = (path, data, method = 'POST') => api(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
 function visible(logged) {
-  if (!logged) { scheduleRows=[];scheduleId=null;scheduleRevision=null;scheduleDirty=false;$('schedule-form').reset();$('schedule-days').replaceChildren();$('schedule-list').replaceChildren(); }
+    if (!logged) { scheduleRows=[];scheduleId=null;scheduleRevision=null;scheduleDirty=false;weekDraft=[];$('day-dialog').close();$('schedule-form').reset();$('schedule-days').replaceChildren();$('schedule-list').replaceChildren(); }
   if (!logged) { $('device-token').value = ''; $('device-secret').hidden = true; $('devices').replaceChildren(); $('punches').replaceChildren(); }
   $('login').hidden = logged; $('workspace').hidden = !logged; $('logout').hidden = !logged;
   if (!logged) { current = null; workerRows = []; $('profile').close(); $('profile-content').replaceChildren(); $('workers').replaceChildren(); $('users').replaceChildren(); $('identity').textContent = ''; $('account').reset(); $('worker').reset(); $('worker-search').value = ''; $('export-count').textContent = ''; }
@@ -70,6 +70,7 @@ function renderWorkers() {
             catch (error) { $('status').textContent = error.message; $('profile').close(); }
           }); $('profile-content').append(toggle);
         }
+        if (current?.role === 'Admin') $('profile-content').append(await profileSchedule(record));
         $('profile').showModal();
       } catch (error) { $('status').textContent = error.message; } finally { open.disabled = false; }
     });
@@ -181,73 +182,73 @@ $('download-punches').addEventListener('click', async () => {
   } catch (error) { $('status').textContent = error.message; } finally { $('download-punches').disabled = false; }
 });
 
-let scheduleRows=[], scheduleId=null, scheduleRevision=null, scheduleDirty=false;
+let scheduleRows=[],scheduleId=null,scheduleRevision=null,scheduleDirty=false,weekDraft=[],editingDay=1;
 const dayNames=['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
 const scheduleRules=import('/schedule-rules.js');
-function scheduleInput(type,value,label) {
- const input=document.createElement('input'); input.type=type; input.value=value; input.setAttribute('aria-label',label); return input;
+const duration=n=>`${Math.floor(n/60)} h ${n%60} min`;
+const clock12=value=>{const [h,m]=value.split(':').map(Number);return `${h%12||12}:${String(m).padStart(2,'0')} ${h<12?'AM':'PM'}`;};
+function timeControl(value,label){
+ const box=element('label',label,'time12'),parts=value.split(':').map(Number);
+ const fields=element('span','','time12-fields');
+ for(const [name,values,selected] of [['hour',Array.from({length:12},(_,i)=>String(i+1)),String(parts[0]%12||12)],['minute',Array.from({length:60},(_,i)=>String(i).padStart(2,'0')),String(parts[1]).padStart(2,'0')],['period',['AM','PM'],parts[0]<12?'AM':'PM']]){
+  const select=document.createElement('select');select.dataset.part=name;select.setAttribute('aria-label',`${label} ${name==='hour'?'hora':name==='minute'?'minuto':'AM o PM'}`);
+  for(const v of values){const option=element('option',v);option.value=v;select.append(option);}select.value=selected;fields.append(select);
+ }box.append(fields);return box;
 }
-function addRest(container, rest={kind:'Comida',start:'13:00',end:'14:00'}) {
- if(container.children.length>=8) { $('schedule-message').textContent='Máximo 8 descansos por día';return; }
- const row=element('div','','rest-row'); const kind=document.createElement('select'); kind.setAttribute('aria-label','Tipo de pausa');
- for(const value of ['Comida','Descanso']) { const option=element('option',value);option.value=value;kind.append(option); } kind.value=rest.kind;
- const start=scheduleInput('time',rest.start,'Inicio de pausa'),end=scheduleInput('time',rest.end,'Fin de pausa');
- const remove=element('button','Quitar','danger');remove.type='button';remove.addEventListener('click',()=>{row.remove();scheduleChanged();});
- row.append(kind,start,end,remove);container.append(row);
-}
-function readSchedule() {
- return {name:$('schedule-name').value,zone:$('schedule-zone').value,markBreaks:$('schedule-mark').checked,days:[...$('schedule-days').children].filter(row=>row.querySelector('.day-enabled').checked).map(row=>({weekday:Number(row.dataset.day),start:row.querySelector('.day-start').value,end:row.querySelector('.day-end').value,breaks:[...row.querySelector('.rests').children].map(rest=>({kind:rest.querySelector('select').value,start:rest.querySelectorAll('input')[0].value,end:rest.querySelectorAll('input')[1].value}))}))};
-}
-const duration=minutes=>`${Math.floor(minutes/60)} h ${minutes%60} min`;
-async function schedulePreview() {
- try {const {validateSchedule}=await scheduleRules;const result=validateSchedule(readSchedule());$('schedule-summary').textContent=`${duration(result.weeklyMinutes)} efectivas / semana`;
-  for(const day of result.days) $('schedule-days').querySelector(`[data-day="${day.weekday}"] .day-total`).textContent=`${duration(day.effectiveMinutes)}${day.overnight?' · salida al día siguiente':''}`;
- } catch(error) {$('schedule-summary').textContent=error.message;}
-}
-function scheduleChanged(){scheduleDirty=true;for(const total of document.querySelectorAll('.day-total'))total.textContent='';schedulePreview();}
-function editSchedule(row=null) {
- if(scheduleDirty && !confirm('¿Descartar los cambios sin guardar?'))return;
- scheduleId=row?.id||null;scheduleRevision=row?.revision||null;
- const value=row?.definition||{name:'',zone:'America/Mexico_City',markBreaks:false,days:[1,2,3,4,5].map(weekday=>({weekday,start:'08:00',end:'17:00',breaks:[{kind:'Comida',start:'13:00',end:'14:00'}]}))};
- $('schedule-name').value=value.name;
- if(![...$('schedule-zone').options].some(option=>option.value===value.zone)) {const option=element('option',value.zone);option.value=value.zone;$('schedule-zone').append(option);}
- $('schedule-zone').value=value.zone;$('schedule-mark').checked=value.markBreaks;$('schedule-days').replaceChildren();$('schedule-message').textContent='';
- for(let weekday=1;weekday<=7;weekday++) {
-  const day=value.days.find(day=>day.weekday===weekday);const row=element('section','','schedule-day');row.dataset.day=weekday;
-  const heading=element('div','','day-heading');const label=element('label',dayNames[weekday-1],'check');const enabled=scheduleInput('checkbox','',dayNames[weekday-1]);enabled.className='day-enabled';enabled.checked=Boolean(day);label.prepend(enabled);
-  const total=element('span','','day-total muted');heading.append(label,total);row.append(heading);
-  const detail=element('div','','day-detail');detail.hidden=!enabled.checked;
-  const times=element('div','','day-times');
-  const fromLabel=element('label','Entrada'),toLabel=element('label','Salida');
-  const start=scheduleInput('time',day?.start||'08:00',`Entrada ${dayNames[weekday-1]}`);start.className='day-start';
-  const end=scheduleInput('time',day?.end||'17:00',`Salida ${dayNames[weekday-1]}`);end.className='day-end';fromLabel.append(start);toLabel.append(end);
-  const copy=element('button','Copiar a días activos');copy.type='button';
-  times.append(fromLabel,toLabel,copy);detail.append(times);
-  const rests=element('div','','rests');for(const rest of day?.breaks||[])addRest(rests,rest);detail.append(rests);
-  const add=element('button','+ Comida / descanso','profile-button');add.type='button';add.addEventListener('click',()=>{addRest(rests);scheduleChanged();});detail.append(add);
-  copy.addEventListener('click',()=>{
-   if(!confirm(`¿Copiar ${dayNames[weekday-1]} a los demás días activos?`))return;
-   const source=readSchedule().days.find(day=>day.weekday===weekday);
-   for(const target of $('schedule-days').children)if(target!==row && target.querySelector('.day-enabled').checked){target.querySelector('.day-start').value=source.start;target.querySelector('.day-end').value=source.end;const list=target.querySelector('.rests');list.replaceChildren();for(const rest of source.breaks)addRest(list,rest);}
-   scheduleChanged();
-  });
-  enabled.addEventListener('change',()=>{detail.hidden=!enabled.checked;});row.append(detail);$('schedule-days').append(row);
+function readTime(box){let h=Number(box.querySelector('[data-part=hour]').value)%12;if(box.querySelector('[data-part=period]').value==='PM')h+=12;return String(h).padStart(2,'0')+':'+box.querySelector('[data-part=minute]').value;}
+function readSchedule(){return {name:$('schedule-name').value,zone:$('schedule-zone').value,markBreaks:$('schedule-mark').checked,days:weekDraft.filter(d=>d.selected).map(d=>{if(!d.configured)throw new Error(`Configura ${dayNames[d.weekday-1]}`);return {weekday:d.weekday,...d.value};})};}
+async function schedulePreview(){try{const {validateSchedule}=await scheduleRules;const result=validateSchedule(readSchedule());$('schedule-summary').textContent=`${duration(result.weeklyMinutes)} efectivas / semana`;}catch(error){$('schedule-summary').textContent=error.message;}}
+function scheduleChanged(){scheduleDirty=true;schedulePreview();}
+function renderWeek(){
+ $('schedule-days').replaceChildren();
+ for(const d of weekDraft){const card=element('article','','calendar-day '+(d.selected?(d.configured?'ready':'pending'):'off'));
+  const select=element('button',dayNames[d.weekday-1],'day-select');select.type='button';select.setAttribute('aria-pressed',String(d.selected));select.addEventListener('click',()=>{d.selected=!d.selected;scheduleChanged();renderWeek();});card.append(select);
+  card.append(element('span',!d.selected?'Libre':d.configured?'Configurado':'Por configurar','day-state'));
+  if(d.selected&&d.configured)card.append(element('p',`${clock12(d.value.start)} – ${clock12(d.value.end)}`),element('small',`${d.value.breaks.length} comida / descansos`));
+  if(d.selected){const edit=element('button',d.configured?'Editar horas':'Configurar horas');edit.type='button';edit.addEventListener('click',()=>openDay(d.weekday));card.append(edit);}
+  $('schedule-days').append(card);
  }
- $('save-schedule').textContent=scheduleId?'Guardar cambios':'Crear horario';scheduleDirty=false;schedulePreview();renderSchedules();
+}
+function addDialogBreak(rest={kind:'Comida',start:'13:00',end:'14:00'}){
+ if($('day-breaks').children.length>=8){$('day-error').textContent='Máximo 8 pausas';return;}
+ const row=element('div','','dialog-break');const kind=document.createElement('select');kind.setAttribute('aria-label','Tipo de pausa');for(const v of ['Comida','Descanso']){const option=element('option',v);option.value=v;kind.append(option);}kind.value=rest.kind;
+ const remove=element('button','Quitar','danger');remove.type='button';remove.addEventListener('click',()=>row.remove());row.append(kind,timeControl(rest.start,'Inicio'),timeControl(rest.end,'Fin'),remove);$('day-breaks').append(row);
+}
+function openDay(day){editingDay=day;const draft=weekDraft[day-1];const value=draft.value||{start:'08:00',end:'17:00',breaks:[]};$('day-title').textContent=dayNames[day-1];$('day-times').replaceChildren(timeControl(value.start,'Entrada'),timeControl(value.end,'Salida'));$('day-breaks').replaceChildren();for(const r of value.breaks)addDialogBreak(r);$('day-error').textContent='';$('day-copy').checked=false;$('day-dialog').showModal();}
+$('day-add-break').addEventListener('click',()=>addDialogBreak());
+$('day-cancel').addEventListener('click',()=>$('day-dialog').close());
+$('day-form').addEventListener('submit',async event=>{
+ event.preventDefault();const times=$('day-times').children;const value={start:readTime(times[0]),end:readTime(times[1]),breaks:[...$('day-breaks').children].map(row=>({kind:row.querySelector('select').value,start:readTime(row.querySelectorAll('.time12')[0]),end:readTime(row.querySelectorAll('.time12')[1])}))};
+ try{
+  const {validateSchedule}=await scheduleRules;const changed=structuredClone(weekDraft);
+  for(const d of changed)if(d.weekday===editingDay||($('day-copy').checked&&d.selected)){d.value=structuredClone(value);d.configured=true;}
+  validateSchedule({name:$('schedule-name').value.trim()||'Horario',zone:$('schedule-zone').value,markBreaks:$('schedule-mark').checked,days:changed.filter(d=>d.selected&&d.configured).map(d=>({weekday:d.weekday,...d.value}))});
+  weekDraft=changed;scheduleChanged();renderWeek();$('day-dialog').close();
+ }catch(error){$('day-error').textContent=error.message;}
+});
+function editSchedule(row=null){
+ if(scheduleDirty&&!confirm('¿Descartar cambios sin guardar?'))return;
+ scheduleId=row?.id||null;scheduleRevision=row?.revision||null;const value=row?.definition||{name:'',zone:'America/Mexico_City',markBreaks:false,days:[]};
+ $('schedule-name').value=value.name;if(![...$('schedule-zone').options].some(o=>o.value===value.zone)){const option=element('option',value.zone);option.value=value.zone;$('schedule-zone').append(option);}$('schedule-zone').value=value.zone;$('schedule-mark').checked=value.markBreaks;
+ weekDraft=dayNames.map((_,i)=>{const d=value.days.find(d=>d.weekday===i+1);return {weekday:i+1,selected:Boolean(d),configured:Boolean(d),value:d?{start:d.start,end:d.end,breaks:structuredClone(d.breaks)}:null};});
+ $('schedule-message').textContent='';$('save-schedule').textContent=scheduleId?'Guardar cambios':'Crear horario';scheduleDirty=false;renderWeek();schedulePreview();renderSchedules();
 }
 function renderSchedules(){
- $('schedule-list').replaceChildren();const query=$('schedule-search').value.trim().toLocaleLowerCase('es');
- const rows=scheduleRows.filter(row=>row.definition.name.toLocaleLowerCase('es').includes(query));
- if(!rows.length)$('schedule-list').append(element('p','Sin horarios para mostrar'));
- for(const row of rows){const button=element('button','','schedule-choice');button.type='button';button.setAttribute('aria-pressed',String(row.id===scheduleId));button.append(element('strong',row.definition.name),element('span',`${row.definition.days.length} días · ${duration(row.definition.weeklyMinutes)}`));button.addEventListener('click',async()=>{try{scheduleRows=await api('/api/schedules');const fresh=scheduleRows.find(item=>item.id===row.id);if(fresh)editSchedule(fresh);}catch(error){$('schedule-message').textContent=error.message;}});$('schedule-list').append(button);}
+ $('schedule-list').replaceChildren();const query=$('schedule-search').value.trim().toLocaleLowerCase('es');const rows=scheduleRows.filter(row=>row.definition.name.toLocaleLowerCase('es').includes(query));if(!rows.length)$('schedule-list').append(element('p','Sin horarios'));
+ for(const row of rows){const button=element('button','','schedule-choice');button.type='button';button.setAttribute('aria-pressed',String(row.id===scheduleId));button.append(element('strong',row.definition.name),element('span',`${row.definition.days.length} días · ${duration(row.definition.weeklyMinutes)}`));button.addEventListener('click',async()=>{try{scheduleRows=await api('/api/schedules');editSchedule(scheduleRows.find(r=>r.id===row.id));}catch(error){$('schedule-message').textContent=error.message;}});$('schedule-list').append(button);}
 }
 async function loadSchedules(){scheduleRows=await api('/api/schedules');if(!$('schedule-days').children.length)editSchedule();else renderSchedules();}
-$('schedule-search').addEventListener('input',renderSchedules);
-$('new-schedule').addEventListener('click',()=>{editSchedule();$('schedule-name').focus();});
-$('schedule-form').addEventListener('input',scheduleChanged);
-$('schedule-form').addEventListener('change',scheduleChanged);
+$('schedule-search').addEventListener('input',renderSchedules);$('new-schedule').addEventListener('click',()=>editSchedule());$('schedule-form').addEventListener('input',scheduleChanged);$('schedule-form').addEventListener('change',scheduleChanged);
 $('schedule-form').addEventListener('submit',async event=>{
- event.preventDefault();$('save-schedule').disabled=true;$('schedule-message').textContent='';
- try{const {validateSchedule}=await scheduleRules;const definition=validateSchedule(readSchedule());const saved=await write(scheduleId?`/api/schedules/${scheduleId}`:'/api/schedules',{...definition,revision:scheduleRevision},scheduleId?'PATCH':'POST');scheduleDirty=false;scheduleRows=await api('/api/schedules');editSchedule(saved);$('schedule-message').textContent='Horario guardado';}
- catch(error){$('schedule-message').textContent=error.message;}finally{$('save-schedule').disabled=false;}
+ event.preventDefault();$('save-schedule').disabled=true;
+ try{const {validateSchedule}=await scheduleRules;const definition=validateSchedule(readSchedule());const saved=await write(scheduleId?`/api/schedules/${scheduleId}`:'/api/schedules',{...definition,revision:scheduleRevision},scheduleId?'PATCH':'POST');scheduleDirty=false;scheduleRows=await api('/api/schedules');editSchedule(saved);$('schedule-message').textContent='Guardado. Para aplicar esta versión, asígnala desde el perfil del colaborador.';}catch(error){$('schedule-message').textContent=error.message;}finally{$('save-schedule').disabled=false;}
 });
+async function profileSchedule(worker){
+ const [schedules,assignments]=await Promise.all([api('/api/schedules'),api('/api/schedule-assignments')]);
+ const box=element('section','','profile-schedule');box.append(element('h3','Horario'));const last=assignments.find(a=>a.worker_id===worker.id);box.append(element('p',last?`${last.name} · v${last.revision} · desde ${last.effective_date}`:'Sin horario web asignado','muted'));
+ const form=document.createElement('form');const select=document.createElement('select');select.setAttribute('aria-label','Horario');for(const row of schedules){const option=element('option',`${row.definition.name} · v${row.revision}`);option.value=row.id;select.append(option);}if(last)select.value=last.schedule_id;
+ const date=document.createElement('input');date.type='date';date.required=true;date.setAttribute('aria-label','Fecha de inicio');const tomorrow=new Date();tomorrow.setDate(tomorrow.getDate()+1);date.value=`${tomorrow.getFullYear()}-${String(tomorrow.getMonth()+1).padStart(2,'0')}-${String(tomorrow.getDate()).padStart(2,'0')}`;
+ const label=element('label','Aplicar desde (a partir de mañana)');label.append(date);const save=element('button','Guardar asignación');save.disabled=!schedules.length;const message=element('p','');message.setAttribute('role','status');form.append(select,label,save,message);
+ form.addEventListener('submit',async event=>{event.preventDefault();save.disabled=true;try{await write('/api/schedule-assignments',{workerId:worker.id,scheduleId:select.value,date:date.value});message.textContent='Asignación guardada. Se enviará a la tablet en la próxima sincronización.';}catch(error){message.textContent=error.message;}finally{save.disabled=!schedules.length;}});
+ const edit=element('button','Editar horario');edit.type='button';edit.disabled=!schedules.length;edit.addEventListener('click',async()=>{try{scheduleRows=await api('/api/schedules');const row=scheduleRows.find(row=>row.id===select.value);$('profile').close();showView('schedules');editSchedule(row);}catch(error){message.textContent=error.message;}});box.append(form,edit);return box;
+}

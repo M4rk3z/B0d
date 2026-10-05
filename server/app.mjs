@@ -27,13 +27,14 @@ export async function migrate(pool) {
     await client.query('SELECT pg_advisory_xact_lock(80405001)');
     await client.query(await readFile(new URL('./schema.sql', import.meta.url), 'utf8'));
     const version = (await client.query('SELECT max(version) AS version FROM b0d_schema_version')).rows[0].version;
-    if (![1, 2, 3, 4, 5, 6].includes(version)) throw new Error('Unsupported database version');
+    if (![1, 2, 3, 4, 5, 6, 7].includes(version)) throw new Error('Unsupported database version');
     await client.query(await readFile(new URL('./users.sql', import.meta.url), 'utf8'));
     await client.query(await readFile(new URL('./sync.sql', import.meta.url), 'utf8'));
     await client.query(await readFile(new URL('./pairing.sql', import.meta.url), 'utf8'));
     await client.query('ALTER TABLE b0d_devices ADD COLUMN IF NOT EXISTS deleted BOOLEAN NOT NULL DEFAULT FALSE');
     await client.query('INSERT INTO b0d_schema_version VALUES(5) ON CONFLICT DO NOTHING');
     await client.query(await readFile(new URL('./schedules.sql', import.meta.url), 'utf8'));
+    await client.query(await readFile(new URL('./assignments.sql', import.meta.url), 'utf8'));
     await client.query('COMMIT');
   } catch (error) { await client.query('ROLLBACK'); throw error; }
   finally { client.release(); }
@@ -121,7 +122,7 @@ export function createApplication(pool, { origin }) {
       }
       const current = await session(req);
       const { tokenHash } = current;
-      if (path === '/api/schedules' || path.startsWith('/api/schedules/')) {
+      if (path === '/api/schedules' || path.startsWith('/api/schedules/') || path === '/api/schedule-assignments') {
         json(200, await scheduleRoute(pool, req, path, current, ['POST','PATCH'].includes(req.method) ? await body(req) : null)); return;
       }
       if (path === '/api/devices' || path.startsWith('/api/devices/')) {
