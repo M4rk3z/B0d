@@ -28,6 +28,9 @@ async function api(path, options = {}) {
 }
 const write = (path, data, method = 'POST') => api(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
   function visible(logged) {
+    document.body.classList.toggle('login-screen', !logged);
+    if (logged) document.querySelector('.app-header').after($('status'));
+    else $('login').insertBefore($('status'), $('login').querySelector('button'));
     if (!logged) { $('report-preview').replaceChildren(); $('report-status').textContent = ''; }
     if (!logged) { $('password-dialog').close();finishConfirm(false);scheduleRows=[];scheduleId=null;scheduleRevision=null;scheduleDirty=false;weekDraft=[];$('day-dialog').close();$('schedule-form').reset();$('schedule-days').replaceChildren();$('schedule-list').replaceChildren(); }
   if (!logged) { $('device-token').value = ''; $('device-secret').hidden = true; $('devices').replaceChildren(); $('punches').replaceChildren(); }
