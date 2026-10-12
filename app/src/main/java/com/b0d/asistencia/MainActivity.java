@@ -192,22 +192,16 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         android.widget.ImageView placeholder = new android.widget.ImageView(this);
         placeholder.setImageResource(R.drawable.ic_person);
         cameraBox.addView(placeholder, new FrameLayout.LayoutParams(dp(150), dp(150), Gravity.CENTER));
-        TextView status = new TextView(this); status.setTextColor(0xff2457a7); status.setTextSize(17);
-        status.setGravity(Gravity.CENTER); status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        panel.addView(status, new LinearLayout.LayoutParams(-1, dp(40)));
-        LinearLayout controls = new LinearLayout(this); controls.setGravity(Gravity.CENTER); panel.addView(controls);
-        LinearLayout mainActions = new LinearLayout(this); mainActions.setOrientation(LinearLayout.VERTICAL);
-        int actionWidth = Math.min(240, Math.max(120, getResources().getConfiguration().screenWidthDp - 164));
-        controls.addView(mainActions, new LinearLayout.LayoutParams(dp(actionWidth), -2));
-        LinearLayout smallActions = new LinearLayout(this); smallActions.setOrientation(LinearLayout.VERTICAL);
-        controls.addView(smallActions, new LinearLayout.LayoutParams(dp(64), -2));
-        LinearLayout top = new LinearLayout(this), bottom = new LinearLayout(this);
-        smallActions.addView(top); smallActions.addView(bottom);
-        Button entry = kioskButton(mainActions, R.string.kiosk_entry, 0, false);
-        Button exit = kioskButton(mainActions, R.string.kiosk_exit, 0, false);
-        Button rest = kioskButton(top, R.string.kiosk_break, R.drawable.ic_break, true);
-        Button meal = kioskButton(bottom, R.string.kiosk_meal, R.drawable.ic_meal, true);
-        bottom.setGravity(Gravity.CENTER);
+        NoticeBox status = notice("");
+        LinearLayout controls = new LinearLayout(this); controls.setOrientation(LinearLayout.VERTICAL);
+        panel.addView(controls,new LinearLayout.LayoutParams(-1,-2));
+        LinearLayout firstRow = new LinearLayout(this), secondRow = new LinearLayout(this);
+        controls.addView(firstRow,new LinearLayout.LayoutParams(-1,-2));
+        controls.addView(secondRow,new LinearLayout.LayoutParams(-1,-2));
+        Button entry = kioskButton(firstRow, R.string.kiosk_entry, 0, false);
+        Button exit = kioskButton(firstRow, R.string.kiosk_exit, 0, false);
+        Button meal = kioskButton(secondRow, R.string.kiosk_meal, R.drawable.ic_meal, true);
+        Button rest = kioskButton(secondRow, R.string.kiosk_break, R.drawable.ic_break, true);
         android.widget.ImageButton settings = new android.widget.ImageButton(this);
         settings.setImageResource(R.drawable.ic_settings);
         settings.setContentDescription(getString(R.string.admin_access));
@@ -304,10 +298,46 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
             }
         });
     }
+    private NoticeBox notice(String message) {
+        NoticeBox box=new NoticeBox();
+        LinearLayout.LayoutParams layout=new LinearLayout.LayoutParams(-1,-2);layout.setMargins(0,dp(10),0,dp(10));
+        panel.addView(box,layout);box.setText(message);return box;
+    }
+    private final class NoticeBox extends LinearLayout {
+        final TextView heading,message;
+        final android.widget.ProgressBar progress;
+        NoticeBox(){
+            super(MainActivity.this);setOrientation(HORIZONTAL);setGravity(Gravity.CENTER_VERTICAL);
+            setPadding(dp(14),dp(12),dp(14),dp(12));setMinimumHeight(dp(76));
+            progress=new android.widget.ProgressBar(MainActivity.this);progress.setIndeterminateTintList(ColorStateList.valueOf(0xff2457a7));
+            LinearLayout.LayoutParams spinner=new LinearLayout.LayoutParams(dp(30),dp(30));spinner.rightMargin=dp(14);addView(progress,spinner);
+            LinearLayout words=new LinearLayout(MainActivity.this);words.setOrientation(VERTICAL);addView(words,new LinearLayout.LayoutParams(0,-2,1));
+            heading=new TextView(MainActivity.this);heading.setTextSize(13);heading.setTypeface(null,Typeface.BOLD);words.addView(heading);
+            message=new TextView(MainActivity.this);message.setTextSize(16);message.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);words.addView(message);
+        }
+        void setText(int resource){
+            setText(getString(resource));
+            if(resource==R.string.working||resource==R.string.kiosk_look||resource==R.string.kiosk_identifying)processing();
+            else if(resource!=R.string.empty)setTextColor(0xffa42c35);
+        }
+        void setText(String value){
+            progress.setVisibility(GONE);heading.setText("AVISOS");heading.setTextColor(0xff2457a7);message.setTextColor(0xff2457a7);
+            setBackground(surface(0xffedf3ff,0xffcbdcf4,16));
+            message.setText(value.isEmpty()?"Selecciona una acción para continuar.":value);
+        }
+        void processing(){
+            progress.setVisibility(VISIBLE);heading.setText("EN PROCESO");heading.setTextColor(0xff2457a7);
+            setBackground(surface(0xffedf3ff,0xffadc7ec,16));
+        }
+        void setTextColor(int color){
+            message.setTextColor(color);heading.setTextColor(color);
+            if(color==0xff28694b){heading.setText("✓ REGISTRO GUARDADO");setBackground(surface(0xffe5f5ed,0xff9bd2b7,16));}
+            else if(color==0xffa42c35){heading.setText("! ATENCIÓN");setBackground(surface(0xffffefef,0xffe7b7bb,16));}
+        }
+    }
     private Button kioskButton(LinearLayout parent, int label, int icon, boolean small) {
         Button button = new Button(this); button.setGravity(Gravity.CENTER); button.setElevation(dp(3)); button.setAllCaps(false); button.setText(label);
-        button.setTextSize(small ? 12 : 21); button.setTypeface(null, Typeface.BOLD);
-        if (small) button.setText("");
+        button.setTextSize(small ? 17 : 21); button.setTypeface(null, Typeface.BOLD);
         button.setTextColor(0xff172b42);
         int fill = label == R.string.kiosk_entry ? 0xff00c879 : label == R.string.kiosk_exit ? 0xffff575d
                 : label == R.string.kiosk_break ? 0xffffbd59 : 0xffffde59;
@@ -317,12 +347,13 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         button.setTooltipText(getString(label)); button.setContentDescription(getString(label));
         if (icon != 0) {
             android.graphics.drawable.Drawable drawable = getDrawable(icon).mutate();
-            drawable.setTint(0xff172b42); drawable.setBounds(0,0,dp(32),dp(32));
-            button.setCompoundDrawables(null, drawable, null, null);
+            drawable.setTint(0xff172b42); drawable.setBounds(0,0,dp(24),dp(24));
+            button.setCompoundDrawables(drawable, null, null, null);
+            button.setCompoundDrawablePadding(dp(8));
             button.setPadding(dp(8),dp(12),dp(8),dp(8));
         }
         LinearLayout.LayoutParams p = parent.getOrientation() == LinearLayout.VERTICAL
-                ? new LinearLayout.LayoutParams(-1, dp(56)) : new LinearLayout.LayoutParams(0, dp(56), 1);
+                ? new LinearLayout.LayoutParams(-1, dp(60)) : new LinearLayout.LayoutParams(0, dp(60), 1);
         p.setMargins(dp(4), dp(4), dp(4), dp(4)); parent.addView(button, p); return button;
     }
     private void showPin(boolean setup) {
@@ -331,7 +362,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
 
         EditText pin = pinField(R.string.pin_hint);
         EditText confirmation = setup ? pinField(R.string.confirm_hint) : null;
-        TextView status = text(R.string.empty, 16);
+        NoticeBox status = notice("");
         Button submit = button(setup ? R.string.save_pin : R.string.enter, () -> {});
         Button cancel = button(R.string.back_home, this::showHome);
         submit.setOnClickListener(view -> {
@@ -379,6 +410,10 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         runAttendanceTask(true, R.string.admin_title, R.string.attendance_error,
                 AdminDashboard::load, this::renderAdminDashboard);
     }
+    private static final class NavItem {
+        final String label; final int icon,page; final Runnable action;
+        NavItem(String label,int icon,int page,Runnable action){this.label=label;this.icon=icon;this.page=page;this.action=action;}
+    }
     private LinearLayout adminNavigation(int title) {
         LinearLayout outer = new LinearLayout(this);
         outer.setPadding(dp(16),dp(12),dp(16),dp(16)); outer.setBackgroundColor(0xffeef2f7);
@@ -387,23 +422,25 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         nav.setPadding(dp(6),dp(8),dp(6),dp(8));
         nav.setBackground(surface(0xffffffff,0xffe8edf5,32)); nav.setElevation(dp(8));
         outer.addView(nav,new LinearLayout.LayoutParams(-1,dp(80)));
-        String[] labels = {"Personal", "Horarios", "Inicio", "Historial", "Salir"};
-        int[] icons = {R.drawable.ic_person,R.drawable.ic_nav_clock,R.drawable.ic_nav_home,R.drawable.ic_nav_folder,android.R.drawable.ic_lock_power_off};
-        int[] pages = {R.string.workers_title,R.string.admin_title,R.string.punch_history,0};
-        Runnable[] actions = {this::showWorkers,this::showAdmin,this::showHistory,this::showHome};
-        for (int i=0;i<labels.length;i++) {
+        NavItem[] items = {
+            new NavItem("Personal",R.drawable.ic_person,R.string.workers_title,this::showWorkers),
+            new NavItem("Inicio",R.drawable.ic_nav_home,R.string.admin_title,this::showAdmin),
+            new NavItem("Historial",R.drawable.ic_nav_folder,R.string.punch_history,this::showHistory),
+            new NavItem("Salir",android.R.drawable.ic_lock_power_off,0,this::showHome)
+        };
+        for (NavItem entry : items) {
             LinearLayout item = new LinearLayout(this); item.setOrientation(LinearLayout.VERTICAL); item.setGravity(Gravity.CENTER);
-            boolean selected = title == pages[i]; boolean home = i == 2;
-            android.widget.ImageView icon = new android.widget.ImageView(this); icon.setImageResource(icons[i]);
+            boolean selected = title == entry.page; boolean home = entry.page == R.string.admin_title;
+            android.widget.ImageView icon = new android.widget.ImageView(this); icon.setImageResource(entry.icon);
             icon.setColorFilter(home ? 0xffffffff : selected ? 0xff2457a7 : 0xff7c8ba0);
             int size = home ? 42 : 24;
             if (home) { icon.setPadding(dp(10),dp(10),dp(10),dp(10)); icon.setBackground(surface(0xff2457a7,0xff2457a7,24)); icon.setElevation(dp(4)); }
             item.addView(icon,new LinearLayout.LayoutParams(dp(size),dp(size)));
-            TextView label = new TextView(this); label.setText(labels[i]); label.setTextSize(11); label.setGravity(Gravity.CENTER);
+            TextView label = new TextView(this); label.setText(entry.label); label.setTextSize(11); label.setGravity(Gravity.CENTER);
             label.setTextColor(selected ? 0xff2457a7 : 0xff7c8ba0); label.setTypeface(null,selected ? Typeface.BOLD : Typeface.NORMAL);
-            item.addView(label); item.setContentDescription(labels[i]); item.setFocusable(true);
+            item.addView(label); item.setContentDescription(entry.label); item.setFocusable(true);
             item.setBackground(new RippleDrawable(ColorStateList.valueOf(0x152457a7),null,null));
-            Runnable action = actions[i]; item.setOnClickListener(v -> { if (!busy && requireAdmin()) action.run(); });
+            Runnable action = entry.action; item.setOnClickListener(v -> { if (!busy && requireAdmin()) action.run(); });
             nav.addView(item,new LinearLayout.LayoutParams(0,-1,1));
         }
         return outer;
@@ -644,7 +681,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         code.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
         EditText name = workerField(R.string.worker_name, 100);
         name.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
-        TextView status = text(R.string.empty, 16);
+        NoticeBox status = notice("");
         button(R.string.save_worker, () -> {
             if (!requireAdmin() || busy) return;
             final WorkerFields fields;
@@ -686,7 +723,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         if (!requireAdmin() || busy) return;
         busy = true;
         screen(R.string.workers_title);
-        text(R.string.working, 18);
+        notice(getString(R.string.working)).processing();
         int request = generation;
         WORKER.execute(() -> {
             List<WorkersDb.Worker> result = null;
@@ -704,7 +741,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
                 if (failure == 0) { renderWorkers(rows); }
                 else {
                     screen(R.string.workers_title);
-                    text(failure, 18);
+                    notice(getString(failure)).setTextColor(0xffa42c35);
                     button(R.string.add_worker, this::showAddWorker);
                     button(R.string.workers_title, this::showWorkers);
                     button(R.string.back_admin, this::showAdmin);
@@ -721,7 +758,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
 
         EditText code = workerField(R.string.worker_code, 20);
         code.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
-        TextView status = text(R.string.empty, 16);
+        NoticeBox status = notice("");
         button(R.string.find_worker, () -> {
             String value = code.getText().toString().trim();
             if (value.isEmpty()) { status.setText(R.string.enter_code); return; }
@@ -865,7 +902,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         if (!access.configured()) { showHome(); return; }
         busy = true;
         screen(title);
-        text(R.string.working, 18);
+        notice(getString(R.string.working)).processing();
         int request = generation;
         WORKER.execute(() -> {
             T result = null;
@@ -882,7 +919,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
                 if (failure == 0) success.accept(value);
                 else {
                     screen(title);
-                    text(failure, 18);
+                    notice(getString(failure)).setTextColor(0xffa42c35);
                     button(admin ? R.string.back_admin : R.string.back_home, admin ? this::showAdmin : this::showHome);
                 }
             });
