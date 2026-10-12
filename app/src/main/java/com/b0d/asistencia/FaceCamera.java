@@ -36,14 +36,14 @@ final class FaceCamera implements AutoCloseable {
     private Preview preview;
     private ImageCapture capture;
     private volatile boolean closed;
-    private boolean taking;
+    private boolean taking,enrollment;
     private MotionChallenge challenge;
     private long challengeStarted;
     private final java.util.List<byte[]> samples=new java.util.ArrayList<>();
     private final android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper());
     void captureGuided(boolean enrollment){
         if(closed||taking||capture==null)return;
-        challenge=new MotionChallenge(enrollment);challengeStarted=android.os.SystemClock.elapsedRealtime();samples.clear();capture();
+        this.enrollment=enrollment;challenge=new MotionChallenge(enrollment);challengeStarted=android.os.SystemClock.elapsedRealtime();samples.clear();capture();
     }
     private void publishGuidance(){
         listener.progress(challenge.prompt(),challenge.index);
@@ -119,7 +119,7 @@ final class FaceCamera implements AutoCloseable {
             boolean quality=FaceQuality.acceptable(faces.size(),box.width(),box.height(),
                     challenge==null?face.getHeadEulerAngleY():0,face.getHeadEulerAngleX(),face.getHeadEulerAngleZ(),
                     box.left,box.top,box.right,box.bottom,bitmap.getWidth(),bitmap.getHeight());
-            if(!quality){fail(R.string.face_quality_error);return;}
+            if(!quality){fail(challenge==null?R.string.face_quality_error:R.string.face_sample_retry);return;}
             if(challenge!=null&&!challenge.observe(face.getHeadEulerAngleY(),true,android.os.SystemClock.elapsedRealtime())){retryGuided();return;}
             // Retain a little context around the face; dimensions remain bounded.
             int pad = Math.min(box.width(), box.height()) / 5;
@@ -134,15 +134,42 @@ final class FaceCamera implements AutoCloseable {
             if (crop != bitmap) crop.recycle();
             byte[] photo=output.toByteArray();
             if(challenge==null)listener.captured(photo);
+            else if(!enrollment)acceptSample(photo);
             else {
-                samples.add(photo);
-                if(challenge.index==challenge.poses.length){
-                    java.util.List<byte[]> result=new java.util.ArrayList<>(samples);samples.clear();challenge=null;
-                    listener.capturedSeries(result);
-                }else retryGuided();
+                byte[] first=samples.isEmpty()?null:samples.get(0).clone();
+                worker.execute(()->{
+                    int error=0;
+                    try{FaceProfiles.validateSample(first,photo,view.getContext().getApplicationContext());}
+                    catch(IllegalArgumentException e){error=R.string.face_sample_retry;}
+                    catch(RuntimeException|LinkageError e){error=R.string.face_detection_error;}
+                    finally{if(first!=null)java.util.Arrays.fill(first,(byte)0);}
+                    int result=error;
+                    main.execute(()->{
+                        if(closed){java.util.Arrays.fill(photo,(byte)0);return;}
+                        if(result!=0){
+                            java.util.Arrays.fill(photo,(byte)0);challenge.index--;challenge.resetHold();fail(result);
+                        }else acceptSample(photo);
+                    });
+                });
             }
         }).addOnFailureListener(main, error -> fail(R.string.face_detection_error))
                 .addOnCompleteListener(main, task -> bitmap.recycle());
+    }
+    private void acceptSample(byte[] photo){
+        samples.add(photo);
+        if(challenge.index==challenge.poses.length){
+            java.util.List<byte[]> result=new java.util.ArrayList<>(samples);samples.clear();challenge=null;
+            listener.capturedSeries(result);
+        }else retryGuided();
+    }
+    void updateRotation(){
+        view.post(()->{
+            if(closed||view.getDisplay()==null)return;
+            int rotation=view.getDisplay().getRotation();
+            if(preview!=null)preview.setTargetRotation(rotation);
+            if(capture!=null)capture.setTargetRotation(rotation);
+            if(challenge!=null)challenge.resetHold();
+        });
     }
     private void fail(int message) {
         main.execute(() -> {

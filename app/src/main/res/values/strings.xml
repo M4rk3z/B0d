@@ -180,4 +180,5 @@
     <string name="kiosk_brand" translatable="false">B0D</string>
     <string name="pause_unavailable">Esta pausa está desactivada o fuera del límite de horas. Puedes continuar tu jornada o registrar salida.</string>
     <string name="face_motion_timeout">Se agotó el tiempo. Repite los movimientos con buena luz.</string>
+    <string name="face_sample_retry">Repite esta posición: acerca el rostro, mejora la luz y gira solo un poco. Conservamos las tomas anteriores.</string>
 </resources>

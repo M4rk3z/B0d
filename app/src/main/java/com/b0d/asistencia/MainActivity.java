@@ -79,6 +79,11 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
                     () -> { if (!busy) showHome(); });
         }
     }
+    @Override public void onConfigurationChanged(android.content.res.Configuration configuration){
+        super.onConfigurationChanged(configuration);
+        if(panel!=null)panel.requestLayout();
+        if(faceCamera!=null)faceCamera.updateRotation();
+    }
     @Override protected void onResume() {
         super.onResume();
         lifecycle.handleLifecycleEvent(androidx.lifecycle.Lifecycle.Event.ON_RESUME);
@@ -658,53 +663,74 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         progressBar.setMax(5);progressBar.setProgressTintList(ColorStateList.valueOf(0xff218567));panel.addView(progressBar,new LinearLayout.LayoutParams(-1,dp(12)));
         CheckBox sound=new CheckBox(this);sound.setText("Sonidos de captura");sound.setTextColor(0xff172b42);sound.setChecked(getPreferences(MODE_PRIVATE).getBoolean("face_sound",true));
         sound.setOnCheckedChangeListener((view,checked)->{getPreferences(MODE_PRIVATE).edit().putBoolean("face_sound",checked).apply();if(!checked&&faceTone!=null)faceTone.stopTone();});panel.addView(sound,params());
-        Button captureButton = button(R.string.face_capture, () -> {
-            if (requireAdmin() && faceCamera != null) faceCamera.captureGuided(true);
+        int token=generation;
+        Button[] controls=new Button[3];
+        controls[0]=button(R.string.face_capture,()->{
+            if(!requireAdmin()||busy||faceCamera==null)return;
+            if(pendingSamples!=null){for(byte[] photo:pendingSamples)java.util.Arrays.fill(photo,(byte)0);pendingSamples=null;pendingFace=null;}
+            controls[1].setEnabled(false);progressBar.setProgress(0);guide.update(0,0,5);
+            faceCamera.resetCapture();faceCamera.captureGuided(true);
         });
-        captureButton.setText("Comenzar registro guiado");
-        captureButton.setEnabled(false);
-        button(R.string.face_cancel, () -> showFace(worker));
-        int token = generation;
-        faceCamera = new FaceCamera(preview, this, WORKER, new FaceCamera.Listener() {
-            private boolean current() { return foreground && authenticated && generation == token; }
-            @Override public void status(int message) {
-                if (current()) { status.setText(message); captureButton.setEnabled(false); if(message!=R.string.face_ready&&message!=R.string.face_back_camera)guide.attention(); }
-            }
-            @Override public void ready() { if (current()) captureButton.setEnabled(true); }
+        controls[0].setText("Comenzar registro guiado");controls[0].setEnabled(false);
+        controls[1]=button(R.string.face_save,()->{
+            if(!requireAdmin()||busy||pendingSamples==null)return;
+            java.util.List<byte[]> photos=new java.util.ArrayList<>();for(byte[] photo:pendingSamples)photos.add(photo.clone());
+            busy=true;for(Button control:controls)control.setEnabled(false);status.setText("Guardando perfil…");
+            WORKER.execute(()->{
+                int error=0;
+                try(WorkersDb db=new WorkersDb(getApplicationContext())){FaceProfiles.saveMulti(db.getWritableDatabase(),worker.id,photos,getApplicationContext());}
+                catch(WorkersDb.RuleError e){error=e.message;}
+                catch(RuntimeException|LinkageError e){error=R.string.face_storage_error;}
+                finally{for(byte[] photo:photos)java.util.Arrays.fill(photo,(byte)0);}
+                int result=error;
+                handler.post(()->{
+                    busy=false;
+                    if(!foreground||!authenticated||generation!=token)return;
+                    controls[0].setEnabled(true);controls[2].setEnabled(true);controls[1].setEnabled(result!=0);
+                    if(result==0){
+                        status.setText("✓ Perfil facial guardado");status.setTextColor(0xff218567);faceSound(true);
+                        if(pendingSamples!=null){for(byte[] photo:pendingSamples)java.util.Arrays.fill(photo,(byte)0);pendingSamples=null;pendingFace=null;}
+                    }else{
+                        status.setText(result==R.string.face_quality_error?R.string.face_sample_retry:result);
+                        status.setTextColor(0xffa15b00);guide.attention();
+                    }
+                });
+            });
+        });
+        controls[1].setEnabled(false);
+        controls[2]=button(R.string.face_cancel,()->showFace(worker));
+        faceCamera=new FaceCamera(preview,this,WORKER,new FaceCamera.Listener(){
+            private boolean current(){return foreground&&authenticated&&generation==token;}
             private int lastStep=-1;
+            @Override public void status(int message){
+                if(!current())return;
+                status.setText(message);controls[0].setEnabled(false);
+                if(message!=R.string.face_ready&&message!=R.string.face_back_camera){status.setTextColor(0xffa15b00);guide.attention();}
+            }
+            @Override public void ready(){if(current())controls[0].setEnabled(true);}
             @Override public void guidance(int pose,int completed,int total){
                 if(!current())return;
                 guide.update(pose,completed,total);progressBar.setProgress(completed);
-                progressText.setText(completed+" de "+total+" posiciones capturadas");
-                if(completed>lastStep&&completed>0)faceSound(false);lastStep=completed;
+                progressText.setText(completed+" de "+total+" posiciones validadas");
+                if(completed>lastStep){scheduleExpiry();if(completed>0)faceSound(false);}lastStep=completed;
             }
-            @Override public void progress(String message,int step){if(current()){if(!status.getText().toString().equals(message))status.setText(message);captureButton.setEnabled(false);}}
-
+            @Override public void progress(String message,int step){
+                if(current()){
+                    if(!status.getText().toString().equals(message))status.setText(message);
+                    status.setTextColor(0xff172b42);controls[0].setEnabled(false);
+                }
+            }
             @Override public void captured(byte[] jpeg){java.util.Arrays.fill(jpeg,(byte)0);}
-            @Override public void capturedSeries(java.util.List<byte[]> photos) {
-                if (!current()) { for(byte[] photo:photos)java.util.Arrays.fill(photo,(byte)0); return; }
-                screen(R.string.face_title);
-                text(worker.name + " · " + worker.code, 24);
-
-                notice("✓ 5 de 5 posiciones capturadas\nRevisa el rostro y pulsa Guardar perfil.");
-                faceSound(false);
-                pendingSamples=photos; pendingFace=photos.get(0);
-                displayFace(pendingFace);
-                button(R.string.face_save, () -> {
-                    if (!requireAdmin() || busy || pendingFace == null) return;
-                    java.util.List<byte[]> toSave=new java.util.ArrayList<>();for(byte[] photo:pendingSamples)toSave.add(photo.clone());
-                    runFaceTask(db -> {
-                        try {
-                            FaceProfiles.saveMulti(db.getWritableDatabase(), worker.id, toSave, getApplicationContext());
-                            return FaceProfiles.read(db.getReadableDatabase(), worker.id);
-                        } finally { for(byte[] photo:toSave)java.util.Arrays.fill(photo,(byte)0); }
-                    }, profile -> renderFace(worker, profile, true));
-                });
-                button(R.string.face_retake, () -> startFaceCamera(worker));
-                button(R.string.face_cancel, () -> showFace(worker));
+            @Override public void capturedSeries(java.util.List<byte[]> photos){
+                if(!current()){for(byte[] photo:photos)java.util.Arrays.fill(photo,(byte)0);return;}
+                scheduleExpiry();pendingSamples=photos;pendingFace=photos.get(0);
+                guide.update(0,5,5);progressBar.setProgress(5);progressText.setText("5 de 5 posiciones validadas");
+                status.setText("✓ Captura completa. Pulsa Guardar perfil.");status.setTextColor(0xff218567);faceSound(false);
+                controls[0].setText("Repetir captura");controls[0].setEnabled(true);controls[1].setEnabled(true);
             }
         });
     }
+
     @Override public void onRequestPermissionsResult(int code, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(code, permissions, results);
         if (code == 42) { if (foreground) showHome(); return; }

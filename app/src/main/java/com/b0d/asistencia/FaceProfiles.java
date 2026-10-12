@@ -39,6 +39,19 @@ final class FaceProfiles {
             catch (Exception e) { return new Profile(null, c.getLong(1), true); }
         }
     }
+    static void validateSample(byte[] first,byte[] photo,android.content.Context context){
+        float[] current=null,reference=null;
+        try{
+            current=FaceEngine.get(context).feature(photo);
+            if(first!=null){
+                reference=FaceEngine.get(context).feature(first);
+                if(FaceMatchRules.cosine(reference,current)<0.45)throw new IllegalArgumentException("Inconsistent sample");
+            }
+        }finally{
+            if(current!=null)java.util.Arrays.fill(current,0);
+            if(reference!=null)java.util.Arrays.fill(reference,0);
+        }
+    }
     static void save(SQLiteDatabase db,String worker,byte[] photo,android.content.Context context){
         saveMulti(db,worker,java.util.Collections.singletonList(photo),context);
     }
