@@ -215,14 +215,24 @@ final class WorkersDb extends SQLiteOpenHelper {
             AttendanceRepository.Context context = reports.forAction(workerId, last == null ? null : last.kind, now, zone);
             PunchRules.Result result = PunchRules.validate(worker.active, last == null ? null : last.kind,
                     last == null ? 0 : last.time, kind, now, true);
-            if (result != PunchRules.Result.OK) throw new RuleError(result == PunchRules.Result.CLOCK ?
-                    R.string.clock_error : result == PunchRules.Result.INACTIVE ? R.string.worker_not_available : R.string.sequence_error);
+            if(result!=PunchRules.Result.OK){
+                int message=R.string.sequence_error;
+                if(result==PunchRules.Result.CLOCK)message=R.string.clock_error;
+                else if(result==PunchRules.Result.INACTIVE)message=R.string.worker_not_available;
+                else if("IN".equals(kind))message=R.string.punch_already_inside;
+                else if("OUT".equals(kind)&&last!=null&&"OUT".equals(last.kind))message=R.string.punch_already_outside;
+                else if(last==null||"OUT".equals(last.kind))message=R.string.punch_entry_required;
+                else if("BREAK_START".equals(last.kind))message=R.string.punch_return_required;
+                else if("BREAK_END".equals(kind))message=R.string.punch_no_pause;
+                throw new RuleError(message);
+            }
             if ("BREAK_START".equals(kind)) {
                 long entry=now;
                 try(Cursor c=db.rawQuery("SELECT occurred_at FROM punches WHERE worker_id=? AND kind='IN' ORDER BY seq DESC LIMIT 1",new String[]{workerId})){
                     if(c.moveToFirst())entry=c.getLong(0);
                 }
-                if(!SequencePolicy.allowed(this.context,workerId,action==null?"REST":action,now-entry))throw new RuleError(R.string.pause_unavailable);
+                int pauseError=SequencePolicy.error(this.context,workerId,action==null?"REST":action,now-entry);
+                if(pauseError!=0)throw new RuleError(pauseError);
             }
             ContentValues values = new ContentValues();
             values.put("event_id", UUID.randomUUID().toString()); values.put("worker_id", workerId);

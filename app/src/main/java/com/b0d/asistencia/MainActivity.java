@@ -118,7 +118,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         super.onDestroy();
     }
     private void faceSound(boolean saved){
-        if(!foreground||!getPreferences(MODE_PRIVATE).getBoolean("face_sound",true))return;
+        if(!foreground)return;
         try{
             if(faceTone==null)faceTone=new android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC,65);
             faceTone.startTone(saved?android.media.ToneGenerator.TONE_PROP_BEEP2:android.media.ToneGenerator.TONE_PROP_ACK,saved?220:100);
@@ -256,7 +256,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
                 for (Button action : actions) action.setEnabled(false);
                 status.setText(R.string.kiosk_look);
                 handler.postDelayed(() -> {
-                    if (foreground && generation == token && faceCamera != null) faceCamera.captureGuided(false);
+                    if (foreground && generation == token && faceCamera != null) faceCamera.capture();
                 }, 700);
             });
         }
@@ -264,27 +264,27 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
             private boolean current() { return foreground && token == generation; }
             @Override public void status(int message) {
                 if (!current()) return;
-                if (message != R.string.face_ready && message != R.string.face_back_camera) status.setText(message);
+                if(message==R.string.face_ready||message==R.string.face_back_camera)return;
+                if(message==R.string.face_checking){status.setText("Comprobando rostro…");status.processing();}
+                else{status.result("! REVISA ANTES DE CHECAR",getString(message),kioskColor("ERROR"));kioskFeedback(cameraBox,"ERROR");}
             }
             @Override public void ready() {
                 if (!current()) return;
                 chosen[0] = null;
                 for (Button action : actions) action.setEnabled(true);
             }
-            @Override public void progress(String message,int step){if(current())status.setText(message);}
-            @Override public void captured(byte[] jpeg){java.util.Arrays.fill(jpeg,(byte)0);}
-            @Override public void capturedSeries(java.util.List<byte[]> photos) {
-                if (!current() || chosen[0] == null) { for(byte[] photo:photos)java.util.Arrays.fill(photo,(byte)0); return; }
+            @Override public void captured(byte[] jpeg) {
+                if(!current()||chosen[0]==null){java.util.Arrays.fill(jpeg,(byte)0);return;}
                 String action = chosen[0]; busy = true;
                 status.setText(R.string.kiosk_identifying);
                 long captured = android.os.SystemClock.elapsedRealtime();
                 WORKER.execute(() -> {
                     FaceProfiles.Match match = null; int error = 0;
                     try (WorkersDb db = new WorkersDb(getApplicationContext())) {
-                        match = FaceProfiles.identifySeries(db.getWritableDatabase(), photos, getApplicationContext());
+                        match = FaceProfiles.identify(db.getWritableDatabase(), jpeg, getApplicationContext());
                     } catch (WorkersDb.RuleError e) { error = e.message; }
                     catch (RuntimeException | LinkageError e) { error = R.string.face_detection_error; }
-                    finally { for(byte[] photo:photos)java.util.Arrays.fill(photo,(byte)0); }
+                    finally { java.util.Arrays.fill(jpeg,(byte)0); }
                     FaceProfiles.Match found = match; int failure = error;
                     handler.post(() -> {
                         if (!current()) { busy = false; if (foreground) showHome(); return; }
@@ -299,17 +299,22 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
                             WorkersDb.Punch saved = punch; int issue = saveError;
                             handler.post(() -> {
                                 if (!current()) { busy = false; if (foreground) showHome(); return; }
-                                finish(issue == 0 ? saved.name + "\n" + getString(R.string.kiosk_saved,
-                                        getString("IN".equals(saved.kind) ? R.string.kiosk_entry : "OUT".equals(saved.kind) ? R.string.kiosk_exit
-                                                : "BREAK_END".equals(saved.kind) ? R.string.kiosk_return : "MEAL".equals(action) ? R.string.kiosk_meal : R.string.kiosk_break))
-                                        : getString(issue), issue == 0);
+                                String registered=issue==0?("BREAK_END".equals(saved.kind)?"RETURN":action):"ERROR";
+                                String label=issue==0?("IN".equals(saved.kind)?"Entrada registrada":"OUT".equals(saved.kind)?"Salida registrada":
+                                    "BREAK_END".equals(saved.kind)?("MEAL".equals(action)?"Regreso de comida registrado":"Regreso de descanso registrado"):
+                                    "MEAL".equals(action)?"Salida a comida registrada":"Salida a descanso registrada"):"NO SE REGISTRÓ";
+                                finish(issue==0?saved.name+"\n"+label:getString(issue),issue==0,registered);
+
                             });
                         });
                     });
                 });
             }
-            private void finish(String message, boolean success) {
-                busy = false; status.setText(message); status.setTextColor(success ? 0xff28694b : 0xffa42c35);
+            private void finish(String message,boolean success){finish(message,success,"ERROR");}
+            private void finish(String message,boolean success,String action){
+                busy=false;int color=kioskColor(action);
+                status.result(success?"✓ REGISTRO GUARDADO":message.equals(getString(R.string.attendance_error))?"! REVISA EL ÚLTIMO REGISTRO":"! NO SE REGISTRÓ",message,color);
+                kioskFeedback(cameraBox,action);
                 handler.postDelayed(() -> {
                     if (!current()) return;
                     status.setText(""); status.setTextColor(0xff2457a7);
@@ -317,6 +322,26 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
                 }, 4000);
             }
         });
+    }
+    private int kioskColor(String action){
+        switch(action){case "IN":return 0xff218567;case "OUT":return 0xff2457a7;
+            case "MEAL":return 0xffa56500;case "REST":return 0xff7650ac;case "RETURN":return 0xff087f8c;default:return 0xffb42318;}
+    }
+    private void kioskFeedback(FrameLayout camera,String action){
+        View flash=new View(this);flash.setBackgroundColor(kioskColor(action));flash.setAlpha(.24f);
+        flash.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        camera.addView(flash,new FrameLayout.LayoutParams(-1,-1));
+        flash.animate().alpha(0).setDuration(650).withEndAction(()->camera.removeView(flash)).start();
+        if(!foreground)return;
+        int tone="IN".equals(action)?android.media.ToneGenerator.TONE_PROP_ACK:
+            "OUT".equals(action)?android.media.ToneGenerator.TONE_PROP_BEEP2:
+            "MEAL".equals(action)?android.media.ToneGenerator.TONE_DTMF_3:
+            "REST".equals(action)?android.media.ToneGenerator.TONE_DTMF_6:
+            "RETURN".equals(action)?android.media.ToneGenerator.TONE_PROP_PROMPT:android.media.ToneGenerator.TONE_PROP_NACK;
+        try{
+            if(faceTone==null)faceTone=new android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC,65);
+            faceTone.startTone(tone,200);
+        }catch(RuntimeException ignored){ /* A muted or unavailable speaker must not block attendance. */ }
     }
     private NoticeBox notice(String message) {
         NoticeBox box=new NoticeBox();
@@ -341,9 +366,14 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
             else if(resource!=R.string.empty)setTextColor(0xffa42c35);
         }
         void setText(String value){
-            progress.setVisibility(GONE);heading.setText("AVISOS");heading.setTextColor(0xff2457a7);message.setTextColor(0xff2457a7);
+            progress.setVisibility(GONE);heading.setTextSize(13);message.setTextSize(16);heading.setText("AVISOS");heading.setTextColor(0xff2457a7);message.setTextColor(0xff2457a7);
             setBackground(surface(0xffedf3ff,0xffcbdcf4,16));
             message.setText(value.isEmpty()?"Selecciona una acción para continuar.":value);
+        }
+        void result(String title,String detail,int color){
+            setText(detail);heading.setText(title);heading.setTextSize(17);message.setTextSize(19);
+            heading.setTextColor(color);message.setTextColor(0xff172b42);
+            setBackground(surface((color&0x00ffffff)|0x18000000,color,16));
         }
         void processing(){
             progress.setVisibility(VISIBLE);heading.setText("EN PROCESO");heading.setTextColor(0xff2457a7);
@@ -359,8 +389,8 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         Button button = new Button(this); button.setGravity(Gravity.CENTER); button.setElevation(dp(3)); button.setAllCaps(false); button.setText(label);
         button.setTextSize(small ? 17 : 21); button.setTypeface(null, Typeface.BOLD);
         button.setTextColor(0xff172b42);
-        int fill = label == R.string.kiosk_entry ? 0xff00c879 : label == R.string.kiosk_exit ? 0xffff575d
-                : label == R.string.kiosk_break ? 0xffffbd59 : 0xffffde59;
+        int fill = label == R.string.kiosk_entry ? 0xffa7e4c9 : label == R.string.kiosk_exit ? 0xffbbd3f9
+                : label == R.string.kiosk_break ? 0xffdecdf4 : 0xffffde9c;
         button.setBackground(new RippleDrawable(ColorStateList.valueOf(0x222457a7),
                 surface(fill, fill, 14), null));
         button.setPadding(dp(3), dp(4), dp(3), dp(4)); button.setMinWidth(0); button.setMinimumWidth(0);
@@ -661,8 +691,6 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         TextView progressText=text("5 posiciones · Sigue las flechas y mantén quieta la cámara",15);progressText.setGravity(Gravity.CENTER);
         android.widget.ProgressBar progressBar=new android.widget.ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
         progressBar.setMax(5);progressBar.setProgressTintList(ColorStateList.valueOf(0xff218567));panel.addView(progressBar,new LinearLayout.LayoutParams(-1,dp(12)));
-        CheckBox sound=new CheckBox(this);sound.setText("Sonidos de captura");sound.setTextColor(0xff172b42);sound.setChecked(getPreferences(MODE_PRIVATE).getBoolean("face_sound",true));
-        sound.setOnCheckedChangeListener((view,checked)->{getPreferences(MODE_PRIVATE).edit().putBoolean("face_sound",checked).apply();if(!checked&&faceTone!=null)faceTone.stopTone();});panel.addView(sound,params());
         int token=generation;
         Button[] controls=new Button[3];
         controls[0]=button(R.string.face_capture,()->{

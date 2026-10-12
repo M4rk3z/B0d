@@ -66,9 +66,9 @@
     <string name="punch_history">Registros de asistencia</string>
     <string name="history_limit">Últimas 200 marcaciones, de la más reciente a la más antigua. Todos los registros se conservan en la tablet.</string>
     <string name="no_punches">Todavía no hay entradas ni salidas.</string>
-    <string name="sequence_error">La marcación ya cambió o no corresponde. Vuelve a buscar tu código y revisa el último registro.</string>
+    <string name="sequence_error">Esta acción no corresponde a tu último registro. Consulta al administrador.</string>
     <string name="clock_error">La hora de la tablet es anterior a la última marcación. Revisa la fecha y hora antes de continuar.</string>
-    <string name="attendance_error">No se pudo completar la operación. Vuelve a buscar tu código y revisa el último registro antes de intentar de nuevo.</string>
+    <string name="attendance_error">No se pudo confirmar la marcación. Revisa el último registro con el administrador antes de repetir.</string>
     <string name="schedules_title">Horarios de trabajo</string>
     <string name="create_schedule">Crear horario</string>
     <string name="no_schedules">Todavía no hay horarios. Crea uno desde Administración → Horarios de trabajo.</string>
@@ -175,10 +175,17 @@
     <string name="face_no_profiles">No hay perfiles faciales registrados</string>
     <string name="face_profile_repair">Un perfil requiere nuevo registro. Acude al administrador.</string>
     <string name="face_duplicate">El rostro coincide con otro perfil. Revisa los colaboradores registrados.</string>
-    <string name="face_too_soon">Marcación reciente. Espera unos segundos.</string>
+    <string name="face_too_soon">Ya registraste una marcación hace menos de 5 segundos. Espera y revisa el aviso anterior.</string>
     <string name="face_wrong_break">Registra el regreso con el mismo botón: Comida o Break.</string>
     <string name="kiosk_brand" translatable="false">B0D</string>
-    <string name="pause_unavailable">Esta pausa está desactivada o fuera del límite de horas. Puedes continuar tu jornada o registrar salida.</string>
+    <string name="pause_unavailable">No se pudo leer la configuración de esta pausa. Consulta al administrador.</string>
     <string name="face_motion_timeout">Se agotó el tiempo. Repite los movimientos con buena luz.</string>
     <string name="face_sample_retry">Repite esta posición: acerca el rostro, mejora la luz y gira solo un poco. Conservamos las tomas anteriores.</string>
+    <string name="punch_already_inside">Ya tienes una entrada registrada. No se guardó otra entrada.</string>
+    <string name="punch_already_outside">Ya tienes una salida registrada. No se guardó otra salida.</string>
+    <string name="punch_entry_required">Primero registra tu entrada para iniciar la jornada.</string>
+    <string name="punch_return_required">Tienes una pausa abierta. Registra tu regreso con Comida o Break antes de salir.</string>
+    <string name="punch_no_pause">No tienes una pausa abierta para registrar un regreso.</string>
+    <string name="pause_disabled">Esta pausa no está habilitada en tu perfil. Consulta al administrador.</string>
+    <string name="pause_window">Esta pausa todavía no está disponible o ya superó su límite de horas.</string>
 </resources>

@@ -1,6 +1,6 @@
 # Perfil facial con movimientos — 0.7.0-alpha1
 
-La tablet registra cinco muestras (frente, lado aleatorio, frente, lado opuesto, frente). Cada posición exige estabilidad; al marcar se solicita frente/lado/frente y se compara la identidad. Se conservan los perfiles anteriores de una muestra, aunque conviene volver a capturarlos.
+La tablet registra cinco muestras (frente, lado aleatorio, frente, lado opuesto, frente). Cada posición exige estabilidad; desde 0.7.0-alpha5, al marcar se solicita una sola toma frontal y se compara la identidad. Se conservan los perfiles anteriores de una muestra, aunque conviene volver a capturarlos.
 
 En Colaboradores → Ver perfil → Capturar rostro, la web solicita autorización, muestra los puntos del rostro y guía cinco posiciones. La captura web queda pendiente hasta que la tablet vinculada descargue las muestras, valide que pertenecen al mismo rostro y genere sus vectores SFace. Una captura rechazada conserva el perfil local anterior. Los indicadores distinguen pendiente, listo, revisar captura y estado aún sin sincronizar.
 
