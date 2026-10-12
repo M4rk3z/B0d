@@ -25,6 +25,8 @@ final class FaceCamera implements AutoCloseable {
         void status(int message);
         void ready();
         void captured(byte[] jpeg);
+        default void progress(String message,int step) {}
+        default void capturedSeries(java.util.List<byte[]> photos) { captured(photos.get(0)); }
     }
     private final PreviewView view;
     private final Executor main, worker;
@@ -34,6 +36,24 @@ final class FaceCamera implements AutoCloseable {
     private ImageCapture capture;
     private volatile boolean closed;
     private boolean taking;
+    private MotionChallenge challenge;
+    private long challengeStarted;
+    private final java.util.List<byte[]> samples=new java.util.ArrayList<>();
+    private final android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper());
+    void captureGuided(boolean enrollment){
+        if(closed||taking||capture==null)return;
+        challenge=new MotionChallenge(enrollment);challengeStarted=android.os.SystemClock.elapsedRealtime();samples.clear();capture();
+    }
+    private void retryGuided(){
+        taking=false;
+        if(android.os.SystemClock.elapsedRealtime()-challengeStarted>90000){
+            for(byte[] sample:samples)java.util.Arrays.fill(sample,(byte)0);samples.clear();challenge=null;
+            listener.status(R.string.face_motion_timeout);listener.ready();return;
+        }
+        listener.progress(challenge.prompt(),challenge.index);
+        handler.postDelayed(this::capture,350);
+    }
+
     private final FaceDetector detector = FaceDetection.getClient(new FaceDetectorOptions.Builder()
             .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE).build());
 
@@ -59,7 +79,7 @@ final class FaceCamera implements AutoCloseable {
     void capture() {
         if (closed || capture == null || taking) return;
         taking = true;
-        listener.status(R.string.face_checking);
+        if(challenge==null)listener.status(R.string.face_checking);else listener.progress(challenge.prompt(),challenge.index);
         if (view.getDisplay() != null) capture.setTargetRotation(view.getDisplay().getRotation());
         capture.takePicture(worker, new ImageCapture.OnImageCapturedCallback() {
             @Override public void onCaptureSuccess(ImageProxy image) {
@@ -90,11 +110,11 @@ final class FaceCamera implements AutoCloseable {
             if (faces.size() != 1) { fail(R.string.face_count_error); return; }
             Face face = faces.get(0);
             Rect box = face.getBoundingBox();
-            if (!FaceQuality.acceptable(faces.size(), box.width(), box.height(), face.getHeadEulerAngleY(),
-                    face.getHeadEulerAngleX(), face.getHeadEulerAngleZ(), box.left, box.top, box.right,
-                    box.bottom, bitmap.getWidth(), bitmap.getHeight())) {
-                fail(R.string.face_quality_error); return;
-            }
+            boolean quality=FaceQuality.acceptable(faces.size(),box.width(),box.height(),
+                    challenge==null?face.getHeadEulerAngleY():0,face.getHeadEulerAngleX(),face.getHeadEulerAngleZ(),
+                    box.left,box.top,box.right,box.bottom,bitmap.getWidth(),bitmap.getHeight());
+            if(!quality){fail(R.string.face_quality_error);return;}
+            if(challenge!=null&&!challenge.observe(face.getHeadEulerAngleY(),true,android.os.SystemClock.elapsedRealtime())){retryGuided();return;}
             // Retain a little context around the face; dimensions remain bounded.
             int pad = Math.min(box.width(), box.height()) / 5;
             int left = Math.max(0, box.left - pad), top = Math.max(0, box.top - pad);
@@ -106,21 +126,31 @@ final class FaceCamera implements AutoCloseable {
             small.compress(Bitmap.CompressFormat.JPEG, 92, output);
             if (small != crop) small.recycle();
             if (crop != bitmap) crop.recycle();
-            listener.captured(output.toByteArray());
+            byte[] photo=output.toByteArray();
+            if(challenge==null)listener.captured(photo);
+            else {
+                samples.add(photo);
+                if(challenge.index==challenge.poses.length){
+                    java.util.List<byte[]> result=new java.util.ArrayList<>(samples);samples.clear();challenge=null;
+                    listener.capturedSeries(result);
+                }else retryGuided();
+            }
         }).addOnFailureListener(main, error -> fail(R.string.face_detection_error))
                 .addOnCompleteListener(main, task -> bitmap.recycle());
     }
     private void fail(int message) {
         main.execute(() -> {
             if (closed) return;
-            taking = false; listener.status(message); listener.ready();
+            if(challenge!=null){challenge.resetHold();listener.status(message);retryGuided();}
+            else {taking = false; listener.status(message); listener.ready();}
         });
     }
     void resetCapture() {
         if (!closed) { taking = false; listener.ready(); }
     }
     @Override public void close() {
-        closed = true;
+        closed = true;handler.removeCallbacksAndMessages(null);
+        for(byte[] sample:samples)java.util.Arrays.fill(sample,(byte)0);samples.clear();
         if (provider != null && preview != null && capture != null) provider.unbind(preview, capture);
         detector.close();
     }

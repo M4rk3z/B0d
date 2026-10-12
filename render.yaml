@@ -16,6 +16,8 @@ services:
         fromDatabase:
           name: b0d-postgres
           property: connectionString
+      - key: FACE_ENCRYPTION_KEY
+        generateValue: true
       - key: ADMIN_USER
         sync: false
       - key: ADMIN_PASSWORD

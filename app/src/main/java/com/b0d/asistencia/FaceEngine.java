@@ -14,13 +14,13 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 
-/** Single worker executor owns this engine. Models are bundled and never downloaded on tablet. */
+/** Native operations are serialized across capture and synchronization. Models are bundled and never downloaded on tablet. */
 final class FaceEngine {
     static final String MODEL = "sface-2021dec-yunet-2023mar-v1";
     private static FaceEngine instance;
     private final FaceDetectorYN detector;
     private final FaceRecognizerSF recognizer;
-    static FaceEngine get(Context context) {
+    static synchronized FaceEngine get(Context context) {
         if (instance == null) instance = new FaceEngine(context.getApplicationContext());
         return instance;
     }
@@ -44,7 +44,7 @@ final class FaceEngine {
             return file.getAbsolutePath();
         } catch (java.io.IOException e) { throw new IllegalStateException("Model unavailable", e); }
     }
-    float[] feature(byte[] jpeg) {
+    synchronized float[] feature(byte[] jpeg) {
         Bitmap bitmap = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.length);
         if (bitmap == null) throw new IllegalArgumentException("Invalid photo");
         Mat rgba = new Mat(), bgr = new Mat(), faces = new Mat(), aligned = new Mat(), feature = new Mat();

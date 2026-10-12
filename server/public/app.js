@@ -32,7 +32,7 @@ const write = (path, data, method = 'POST') => api(path, { method, headers: { 'C
     if (logged) document.querySelector('.app-header').after($('status'));
     else $('login').insertBefore($('status'), $('login').querySelector('button'));
     if (!logged) { ++punchRequest;appliedPunchFilters=new URLSearchParams();$('punch-filters').reset();$('report-preview').replaceChildren(); $('report-status').textContent = ''; }
-    if (!logged) { $('password-dialog').close();finishConfirm(false); }
+    if (!logged) { if($('face-dialog').open)import('/face-capture.js').then(m=>m.closeFaceCapture());$('password-dialog').close();finishConfirm(false); }
   if (!logged) { $('device-token').value = ''; $('device-secret').hidden = true; $('devices').replaceChildren(); $('punches').replaceChildren(); }
   $('login').hidden = logged; $('workspace').hidden = !logged; $('logout').hidden = !logged; $('identity').hidden = !logged;
   if (!logged) { current = null; workerRows = []; $('profile').close(); $('profile-content').replaceChildren(); $('workers').replaceChildren(); $('users').replaceChildren(); $('identity').textContent = ''; $('account').reset(); $('worker').reset(); $('worker-search').value = ''; $('export-count').textContent = ''; }
@@ -77,11 +77,11 @@ function renderWorkers() {
             catch (error) { $('status').textContent = error.message; $('profile').close(); }
           }); $('profile-content').append(toggle);
         }
-        $('profile-content').append(workerEditor(record));
+        $('profile-content').append(workerEditor(record),faceEditor(record));
         $('profile').showModal();
       } catch (error) { $('status').textContent = error.message; } finally { open.disabled = false; }
     });
-    card.append(element('h3', worker.name), element('p', worker.code, 'muted'), element('span', worker.active ? 'Activo' : 'Inactivo', 'pill'), open); $('workers').append(card);
+    card.append(element('h3', worker.name), element('p', worker.code, 'muted'), element('span', worker.active ? 'Activo' : 'Inactivo', 'pill'), element('span',faceLabel(worker),'face-state '+(worker.face_ready?'ready':'')), open); $('workers').append(card);
   }
 }
 $('worker-search').addEventListener('input', renderWorkers);
@@ -282,3 +282,12 @@ $('sequence-form').addEventListener('submit',async event=>{
  try{const value={};for(const key of ['meal','rest'])value[key]={enabled:$(key+'-enabled').checked,from:Math.round(Number($(key+'-from').value)*60),to:Math.round(Number($(key+'-to').value)*60)};await write('/api/sequences',value,'PUT');$('sequence-error').textContent='';}
  catch(error){$('sequence-error').textContent=error.message;}finally{button.disabled=false;}
 });
+
+function faceLabel(worker){return !worker.face_known?'Rostro: sin sincronizar':worker.face_error?'Rostro: revisar captura':worker.face_ready?'Rostro capturado ✓':worker.face_captured?'Rostro: pendiente de tablet':'Rostro sin capturar';}
+function faceEditor(worker){
+ const box=element('section','','profile-schedule');box.append(element('h3','Reconocimiento facial'),element('p',faceLabel(worker)));
+ const capture=element('button',worker.face_captured?'Actualizar rostro':'Capturar rostro');capture.type='button';
+ capture.addEventListener('click',async()=>{capture.disabled=true;try{const module=await import('/face-capture.js');$('profile').close();await module.openFaceCapture(worker,api,write,loadWorkers);}catch(error){$('status').textContent=error.message;}finally{capture.disabled=false;}});box.append(capture);
+ if(worker.face_captured){const remove=element('button','Eliminar perfil facial','danger');remove.type='button';remove.addEventListener('click',async()=>{if(!await confirmAction('¿Eliminar el perfil facial? Se retirará de las tablets al sincronizar.'))return;try{await write('/api/workers/'+worker.id+'/face',{},'DELETE');$('profile').close();await loadWorkers();}catch(error){$('status').textContent=error.message;}});box.append(remove);}
+ return box;
+}

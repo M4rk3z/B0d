@@ -1,3 +1,4 @@
+import {deviceFaceRoute} from './faces.mjs';
 import {getSequence} from './sequences.mjs';
 import { randomUUID, randomBytes, randomInt, createHash } from 'node:crypto';
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -14,6 +15,8 @@ export async function deviceRoute(pool, req, path, input) {
   let result;
   if (req.method === 'GET' && path === '/api/device/workers') {
    result = { deviceId: device.id, workers: (await client.query('SELECT id,code,name,active FROM b0d_workers ORDER BY code')).rows };
+  } else if ((req.method==='GET'&&path==='/api/device/faces') || (req.method==='POST'&&['/api/device/face','/api/device/face-status'].includes(path))) {
+   result=await deviceFaceRoute(client,device.id,path,input);
   } else if (req.method === 'GET' && path === '/api/device/sequences') {
    result=await getSequence(client);
   } else if (req.method === 'GET' && path === '/api/device/schedules') {

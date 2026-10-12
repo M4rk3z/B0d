@@ -95,6 +95,7 @@ final class CloudSync {
             } finally { db.endTransaction(); }
 
             SequencePolicy.save(context, request("/api/device/sequences", null, credential));
+            syncFaces(db,credential);
             long pending;
             try (Cursor c = db.rawQuery("SELECT count(*) FROM punches p WHERE NOT EXISTS(SELECT 1 FROM cloud_receipts r WHERE r.event_id=p.event_id)", null)) { c.moveToFirst(); pending = c.getLong(0); }
             prefs.edit().putString("status", "Última sincronización: " + java.time.LocalTime.now().withNano(0) + " · Marcaciones pendientes: " + pending).apply();
@@ -102,6 +103,43 @@ final class CloudSync {
             String message = error instanceof RemoteError ? error.getMessage() : "Sin conexión o sincronización interrumpida";
             prefs.edit().putString("status", message + ". Los registros locales se conservan.").apply();
         }
+    }
+    private void syncFaces(SQLiteDatabase db,String credential)throws Exception{
+        JSONArray remote=request("/api/device/faces",null,credential).getJSONArray("profiles");
+        java.util.Map<String,String> errors=new java.util.HashMap<>();
+        for(int i=0;i<remote.length();i++){
+            JSONObject profile=remote.getJSONObject(i);String local=null;
+            try(Cursor c=db.rawQuery("SELECT local_id FROM cloud_workers WHERE remote_id=?",new String[]{profile.getString("worker_id")})){if(c.moveToFirst())local=c.getString(0);}
+            if(local==null)continue;
+            String revision=profile.getString("revision"),receipt="face-revision-"+local;
+            if(revision.equals(prefs.getString(receipt,"")))continue;
+            java.util.List<byte[]> photos=new java.util.ArrayList<>();
+            try{
+                JSONObject content=request("/api/device/face",new JSONObject().put("workerId",local),credential);
+                revision=content.getString("revision");
+                if(content.getBoolean("deleted"))FaceProfiles.delete(db,local);
+                else{
+                    JSONArray samples=content.getJSONArray("samples");
+                    for(int j=0;j<samples.length();j++)photos.add(Base64.decode(samples.getString(j),Base64.NO_WRAP));
+                    FaceProfiles.saveMulti(db,local,photos,context);
+                }
+                if(!prefs.edit().putString(receipt,revision).commit())throw new IllegalStateException("Receipt not saved");
+            }catch(RuntimeException|LinkageError e){errors.put(local,revision);}
+            finally{for(byte[] photo:photos)java.util.Arrays.fill(photo,(byte)0);}
+        }
+        JSONArray states=new JSONArray();
+        try(Cursor c=db.rawQuery("SELECT local_id FROM cloud_workers",null)){
+            while(c.moveToNext()){
+                String local=c.getString(0),revision=errors.getOrDefault(local,prefs.getString("face-revision-"+local,null));int count=0;
+                try(Cursor f=db.rawQuery("SELECT 1 FROM face_profiles WHERE worker_id=?",new String[]{local})){
+                    if(f.moveToFirst())count=FaceProfiles.sampleCount(db,local,context);
+                }catch(RuntimeException e){count=0;}
+                states.put(new JSONObject().put("workerId",local).put("present",count>0&&!errors.containsKey(local)).put("samples",count)
+                    .put("revision",revision==null?JSONObject.NULL:revision).put("error",errors.containsKey(local)?"capture_rejected":JSONObject.NULL));
+                if(states.length()==50){request("/api/device/face-status",new JSONObject().put("profiles",states),credential);states=new JSONArray();}
+            }
+        }
+        if(states.length()>0)request("/api/device/face-status",new JSONObject().put("profiles",states),credential);
     }
     private static final class RemoteError extends Exception { RemoteError(String message) { super(message); } }
     private JSONObject request(String path, JSONObject data, String token) throws Exception {

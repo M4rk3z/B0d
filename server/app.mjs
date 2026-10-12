@@ -1,3 +1,4 @@
+import {faceRoute,workerFaceQuery} from './faces.mjs';
 import {punchQuery} from './punch-filters.mjs';
 import {defaults,validateSequence,getSequence} from './sequences.mjs';
 import { createServer } from 'node:http';
@@ -11,10 +12,10 @@ import { loadReport,headers as reportHeaders,cells as reportCells,excelReport,pd
 const hash = value => createHash('sha256').update(value).digest('hex');
 class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
 const requireValue = (ok, message) => { if (!ok) throw new HttpError(400, message); };
-async function body(req) {
+async function body(req,limit=16384) {
   if (req.headers['content-type']?.split(';')[0] !== 'application/json') throw new HttpError(415, 'Se requiere JSON');
   let size = 0; const chunks = [];
-  for await (const chunk of req) { size += chunk.length; if (size > 16384) throw new HttpError(413, 'Solicitud demasiado grande'); chunks.push(chunk); }
+  for await (const chunk of req) { size += chunk.length; if (size > limit) throw new HttpError(413, 'Solicitud demasiado grande'); chunks.push(chunk); }
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw new HttpError(400, 'JSON inválido'); }
 }
 export function workerFields(input) {
@@ -44,6 +45,7 @@ export async function migrate(pool) {
     await client.query('ALTER TABLE b0d_schedules ADD COLUMN IF NOT EXISTS deleted BOOLEAN NOT NULL DEFAULT FALSE');
     await client.query('INSERT INTO b0d_schema_version VALUES(8) ON CONFLICT DO NOTHING');
     await client.query(await readFile(new URL('./reports.sql', import.meta.url), 'utf8'));
+    await client.query(await readFile(new URL('./faces.sql',import.meta.url),'utf8'));
     await client.query('COMMIT');
   } catch (error) { await client.query('ROLLBACK'); throw error; }
   finally { client.release(); }
@@ -78,21 +80,28 @@ export function createApplication(pool, { origin }) {
   const assets = {
     '/schedule-rules.js': ['schedule-rules.js', 'text/javascript; charset=utf-8'],
     '/': ['index.html', 'text/html; charset=utf-8'],
+    '/face-capture.js': ['face-capture.js','text/javascript; charset=utf-8'],
+    '/face-motion.js': ['face-motion.js','text/javascript; charset=utf-8'],
+    '/models/face_landmarker.task': ['models/face_landmarker.task','application/octet-stream'],
     '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
     '/styles.css': ['styles.css', 'text/css; charset=utf-8']
   };
   return createServer(async (req, res) => {
-    res.setHeader('Content-Security-Policy', "default-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; media-src 'self' blob:; img-src 'self' blob: data:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'");
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('Cache-Control', 'no-store');
     const json = (status, data) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(data)); };
     try {
       const path = new URL(req.url, origin).pathname;
+      if(req.method==='GET' && /^\/face-vendor\/(vision_bundle\.mjs|wasm\/vision_wasm_(nosimd_)?internal\.(js|wasm))$/.test(path)){
+        res.setHeader('Content-Type',path.endsWith('.wasm')?'application/wasm':'text/javascript');
+        res.end(await readFile(new URL('./node_modules/@mediapipe/tasks-vision/'+path.slice('/face-vendor/'.length),import.meta.url)));return;
+      }
       if (req.method === 'GET' && assets[path]) {
         const [file, type] = assets[path]; res.setHeader('Content-Type', type);
         res.end(await readFile(new URL(`./public/${file}`, import.meta.url))); return;
       }
-      if (req.method === 'GET' && path === '/healthz') { await pool.query('SELECT 1'); json(200, { status: 'ok', stage: 'tablet-sync-v1' }); return; }
+      if (req.method === 'GET' && path === '/healthz') { await pool.query('SELECT 1'); json(200, { status: 'ok', stage: 'face-multiview-v1', faceCaptureReady: Boolean(process.env.FACE_ENCRYPTION_KEY?.length>=32) }); return; }
       if (path === '/api/device/pair' && req.method === 'POST') {
         json(200, await redeemPairing(pool, await body(req))); return;
       }
@@ -209,7 +218,7 @@ export function createApplication(pool, { origin }) {
         await pool.query('DELETE FROM b0d_sessions WHERE token_hash=$1', [tokenHash]); res.setHeader('Set-Cookie', cookie('', 0)); json(200, { ok: true }); return;
       }
       if (req.method === 'GET' && path === '/api/workers') {
-        json(200, (await pool.query('SELECT id,code,name,active FROM b0d_workers ORDER BY active DESC,name,code')).rows); return;
+        json(200, (await pool.query(workerFaceQuery)).rows); return;
       }
       if (req.method === 'POST' && path === '/api/workers') {
         const { code, name } = workerFields(await body(req)); const id = randomUUID();
@@ -222,6 +231,8 @@ export function createApplication(pool, { origin }) {
         } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
         json(201, { id, code, name, active: true }); return;
       }
+      const facePath=/^\/api\/workers\/([0-9a-f-]{36})\/face(\/challenge)?$/.exec(path);
+      if(facePath){json(200,await faceRoute(pool,current,facePath[1],req.method,Boolean(facePath[2]),req.method==='POST'?await body(req,1300000):null));return;}
       if (req.method === 'PATCH' && path.startsWith('/api/workers/')) {
         const id = path.slice('/api/workers/'.length); const input = await body(req);
         requireValue(/^[a-f0-9-]{36}$/.test(id) && input && (input.active === undefined || typeof input.active === 'boolean'), 'Estado inválido');

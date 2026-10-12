@@ -33,6 +33,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
     private FaceCamera faceCamera;
     private android.widget.ImageView faceImage;
     private byte[] pendingFace;
+    private java.util.List<byte[]> pendingSamples;
     @Override public androidx.lifecycle.Lifecycle getLifecycle() { return lifecycle; }
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor();
     private static final ExecutorService CLOUD = Executors.newSingleThreadExecutor();
@@ -110,6 +111,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
     }
     private void clearFace() {
         if (faceCamera != null) { faceCamera.close(); faceCamera = null; }
+        if(pendingSamples!=null){for(byte[] photo:pendingSamples)java.util.Arrays.fill(photo,(byte)0);pendingSamples=null;}
         if (pendingFace != null) { java.util.Arrays.fill(pendingFace, (byte) 0); pendingFace = null; }
         if (faceImage != null) { faceImage.setImageDrawable(null); faceImage = null; }
     }
@@ -238,7 +240,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
                 for (Button action : actions) action.setEnabled(false);
                 status.setText(R.string.kiosk_look);
                 handler.postDelayed(() -> {
-                    if (foreground && generation == token && faceCamera != null) faceCamera.capture();
+                    if (foreground && generation == token && faceCamera != null) faceCamera.captureGuided(false);
                 }, 700);
             });
         }
@@ -253,18 +255,20 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
                 chosen[0] = null;
                 for (Button action : actions) action.setEnabled(true);
             }
-            @Override public void captured(byte[] jpeg) {
-                if (!current() || chosen[0] == null) { java.util.Arrays.fill(jpeg, (byte) 0); return; }
+            @Override public void progress(String message,int step){if(current())status.setText(message);}
+            @Override public void captured(byte[] jpeg){java.util.Arrays.fill(jpeg,(byte)0);}
+            @Override public void capturedSeries(java.util.List<byte[]> photos) {
+                if (!current() || chosen[0] == null) { for(byte[] photo:photos)java.util.Arrays.fill(photo,(byte)0); return; }
                 String action = chosen[0]; busy = true;
                 status.setText(R.string.kiosk_identifying);
                 long captured = android.os.SystemClock.elapsedRealtime();
                 WORKER.execute(() -> {
                     FaceProfiles.Match match = null; int error = 0;
                     try (WorkersDb db = new WorkersDb(getApplicationContext())) {
-                        match = FaceProfiles.identify(db.getWritableDatabase(), jpeg, getApplicationContext());
+                        match = FaceProfiles.identifySeries(db.getWritableDatabase(), photos, getApplicationContext());
                     } catch (WorkersDb.RuleError e) { error = e.message; }
                     catch (RuntimeException | LinkageError e) { error = R.string.face_detection_error; }
-                    finally { java.util.Arrays.fill(jpeg, (byte) 0); }
+                    finally { for(byte[] photo:photos)java.util.Arrays.fill(photo,(byte)0); }
                     FaceProfiles.Match found = match; int failure = error;
                     handler.post(() -> {
                         if (!current()) { busy = false; if (foreground) showHome(); return; }
@@ -632,7 +636,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         panel.addView(preview, new LinearLayout.LayoutParams(-1, dp(320)));
         TextView status = text(R.string.face_starting, 17);
         Button captureButton = button(R.string.face_capture, () -> {
-            if (requireAdmin() && faceCamera != null) faceCamera.capture();
+            if (requireAdmin() && faceCamera != null) faceCamera.captureGuided(true);
         });
         captureButton.setEnabled(false);
         button(R.string.face_cancel, () -> showFace(worker));
@@ -643,21 +647,23 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
                 if (current()) { status.setText(message); captureButton.setEnabled(false); }
             }
             @Override public void ready() { if (current()) captureButton.setEnabled(true); }
-            @Override public void captured(byte[] jpeg) {
-                if (!current()) { java.util.Arrays.fill(jpeg, (byte) 0); return; }
+            @Override public void progress(String message,int step){if(current()){status.setText(message);captureButton.setEnabled(false);}}
+            @Override public void captured(byte[] jpeg){java.util.Arrays.fill(jpeg,(byte)0);}
+            @Override public void capturedSeries(java.util.List<byte[]> photos) {
+                if (!current()) { for(byte[] photo:photos)java.util.Arrays.fill(photo,(byte)0); return; }
                 screen(R.string.face_title);
                 text(worker.name + " · " + worker.code, 24);
 
-                pendingFace = jpeg;
-                displayFace(jpeg);
+                pendingSamples=photos; pendingFace=photos.get(0);
+                displayFace(pendingFace);
                 button(R.string.face_save, () -> {
                     if (!requireAdmin() || busy || pendingFace == null) return;
-                    byte[] toSave = pendingFace.clone();
+                    java.util.List<byte[]> toSave=new java.util.ArrayList<>();for(byte[] photo:pendingSamples)toSave.add(photo.clone());
                     runFaceTask(db -> {
                         try {
-                            FaceProfiles.save(db.getWritableDatabase(), worker.id, toSave, getApplicationContext());
+                            FaceProfiles.saveMulti(db.getWritableDatabase(), worker.id, toSave, getApplicationContext());
                             return FaceProfiles.read(db.getReadableDatabase(), worker.id);
-                        } finally { java.util.Arrays.fill(toSave, (byte) 0); }
+                        } finally { for(byte[] photo:toSave)java.util.Arrays.fill(photo,(byte)0); }
                     }, profile -> renderFace(worker, profile, true));
                 });
                 button(R.string.face_retake, () -> startFaceCamera(worker));
