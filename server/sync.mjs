@@ -1,3 +1,4 @@
+import {getSequence} from './sequences.mjs';
 import { randomUUID, randomBytes, randomInt, createHash } from 'node:crypto';
 const digest = value => createHash('sha256').update(value).digest('hex');
 function check(ok, status, message) { if (!ok) { const error = new Error(message); error.status = status; throw error; } }
@@ -13,6 +14,8 @@ export async function deviceRoute(pool, req, path, input) {
   let result;
   if (req.method === 'GET' && path === '/api/device/workers') {
    result = { deviceId: device.id, workers: (await client.query('SELECT id,code,name,active FROM b0d_workers ORDER BY code')).rows };
+  } else if (req.method === 'GET' && path === '/api/device/sequences') {
+   result=await getSequence(client);
   } else if (req.method === 'GET' && path === '/api/device/schedules') {
    result = { versions: (await client.query('SELECT schedule_id,revision,definition FROM b0d_schedule_versions ORDER BY schedule_id,revision')).rows,
     assignments: (await client.query("SELECT id,worker_id,schedule_id,revision,to_char(effective_date,'YYYY-MM-DD') AS effective_date FROM b0d_schedule_assignments ORDER BY effective_date,id")).rows };

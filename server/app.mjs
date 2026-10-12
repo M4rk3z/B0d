@@ -1,8 +1,9 @@
+import {defaults,validateSequence,getSequence} from './sequences.mjs';
 import { createServer } from 'node:http';
 import { randomBytes, randomUUID, createHash, scryptSync, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { deviceRoute, manageDevices, redeemPairing } from './sync.mjs';
-import { scheduleRoute } from './schedules.mjs';
+
 import {demoStatus,seedDemo} from './demo-data.mjs';
 import { loadReport,headers as reportHeaders,cells as reportCells,excelReport,pdfReport } from './reports.mjs';
 
@@ -35,6 +36,8 @@ export async function migrate(pool) {
     await client.query(await readFile(new URL('./pairing.sql', import.meta.url), 'utf8'));
     await client.query('ALTER TABLE b0d_devices ADD COLUMN IF NOT EXISTS deleted BOOLEAN NOT NULL DEFAULT FALSE');
     await client.query('INSERT INTO b0d_schema_version VALUES(5) ON CONFLICT DO NOTHING');
+    await client.query('CREATE TABLE IF NOT EXISTS b0d_sequences(id INTEGER PRIMARY KEY CHECK(id=1),definition JSONB NOT NULL)');
+    await client.query('INSERT INTO b0d_sequences VALUES(1,$1) ON CONFLICT DO NOTHING',[JSON.stringify(defaults)]);
     await client.query(await readFile(new URL('./schedules.sql', import.meta.url), 'utf8'));
     await client.query(await readFile(new URL('./assignments.sql', import.meta.url), 'utf8'));
     await client.query('ALTER TABLE b0d_schedules ADD COLUMN IF NOT EXISTS deleted BOOLEAN NOT NULL DEFAULT FALSE');
@@ -132,15 +135,23 @@ export function createApplication(pool, { origin }) {
           if(req.method==='GET'){json(200,await demoStatus(pool));return;}
           if(req.method==='POST'){const input=await body(req);requireValue(input?.confirmation==='DEMO-15','Confirma la carga de prueba');json(200,await seedDemo(pool,current.id));return;}
         }
+      if(path==='/api/sequences'){
+        if(req.method==='GET'){json(200,await getSequence(pool));return;}
+        if(req.method==='PUT'){
+          const value=validateSequence(await body(req));
+          await pool.query('UPDATE b0d_sequences SET definition=$1 WHERE id=1',[JSON.stringify(value)]);
+          json(200,value);return;
+        }
+      }
       if (req.method === 'GET' && path === '/api/reports') {
         const params=new URL(req.url,origin).searchParams;const report=await loadReport(pool,params);const format=params.get('format')||'json';
-        if(format==='json'){json(200,{...report,headers:reportHeaders(report.type),table:report.rows.map(row=>reportCells(row,report.type))});return;}
+        if(format==='json'){json(200,{...report,headers:reportHeaders(report.type,report.includeBreaks),table:report.rows.map(row=>reportCells(row,report.type,false,report.includeBreaks))});return;}
         requireValue(['xls','pdf'].includes(format),'Formato inválido');
         const buffer=format==='xls'?excelReport(report):await pdfReport(report);
         res.writeHead(200,{'Content-Type':format==='xls'?'application/vnd.ms-excel':'application/pdf','Content-Disposition':`attachment; filename="Marcaje-${report.type==='regular'?'Regular':'Total'}-${report.from}-${report.to}.${format}"`});res.end(buffer);return;
       }
       if (path === '/api/schedules' || path.startsWith('/api/schedules/') || path === '/api/schedule-assignments') {
-        json(200, await scheduleRoute(pool, req, path, current, ['POST','PATCH'].includes(req.method) ? await body(req) : null)); return;
+        json(410, {error:'Los horarios fueron sustituidos por secuencias de checadas'}); return;
       }
       if (path === '/api/devices' || path.startsWith('/api/devices/')) {
         json(200, await manageDevices(pool, req, path, current, req.method === 'POST' ? await body(req) : null)); return;

@@ -5,48 +5,40 @@ import {calculateDay,reportRows,excelReport,pdfReport,loadReport,regularValues,c
 const H=3600000, base=Date.parse('2026-10-01T00:00:00Z');
 const context={date:'2026-10-01',zone:'UTC',schedule:'v1',plan:{start:base+8*H,end:base+17*H,target:8*H,marked:false,rests:[[base+13*H,base+14*H]]}};
 const events=(list)=>list.map(([kind,h],i)=>({kind,occurred_at:base+h*H,event_id:String(i),worker_id:'w',worker_code:'001',worker_name:'Persona',zone_id:'UTC',context:kind==='IN'?context:null}));
-test('Regular limita 8 h, respeta descansos y aproxima salida sin alterar Total',()=>{
- const row=reportRows(events([['IN',8],['OUT',18]]),'2026-10-01','2026-10-01')[0];
- const regular=regularValues(row),difference=Math.abs(regular.exit-(base+17*H));
+test('Regular conserva tope de ocho horas sin descontar pausas ni depender de horarios',()=>{
+ const row=reportRows(events([['IN',8],['BREAK_START',12],['BREAK_END',13],['OUT',18]]),'2026-10-01','2026-10-01')[0];
+ const regular=regularValues(row),difference=Math.abs(regular.exit-(base+16*H));
  assert.equal(regular.total,8*H);assert.ok(difference>=60000&&difference<=300000);
- assert.deepEqual(regularValues(row),regular);assert.equal(row.exit,base+18*H);assert.equal(row.effective,9*H);
- assert.equal(cells(row,'regular')[4],'8:00');assert.equal(cells(row,'total')[8],'9:00');
- const short=reportRows(events([['IN',8],['OUT',16]]),'2026-10-01','2026-10-01')[0];
- assert.deepEqual(regularValues(short),{exit:base+16*H,total:7*H});
- assert.equal(regularValues({...row,effective:null}).total,null);
+ assert.deepEqual(regularValues(row),regular);assert.equal(row.exit,base+18*H);assert.equal(row.effective,10*H);
+ assert.equal(cells(row,'regular')[4],'8:00');assert.equal(cells(row,'total')[8],'10:00');
+ const short=calculateDay(events([['IN',8],['OUT',15]]));
+ assert.equal(short.effective,7*H);assert.equal(short.extra,0);
 });
-test('Descuenta comida y conserva ocho horas efectivas',()=>{
- const row=calculateDay(events([['IN',8],['OUT',17]]),context);
- assert.equal(row.effective,8*H);assert.equal(row.extra,0);assert.equal(row.ordinary,8*H);
+test('Pausas opcionales, reportes idénticos con o sin contexto antiguo',()=>{
+ const list=events([['IN',8],['OUT',17]]);
+ assert.deepEqual(calculateDay(list,context),calculateDay(list,null));
+ assert.equal(calculateDay(list).effective,9*H);assert.equal(calculateDay(list).extra,H);
 });
-test('Llegar tarde no anticipa extras; se cuentan desde horas efectivas',()=>{
- assert.equal(calculateDay(events([['IN',9],['OUT',18]]),context).extra,0);
- const row=calculateDay(events([['IN',9],['OUT',19]]),context);
- assert.equal(row.extra,H);assert.equal(row.extraStart,base+18*H);
+test('No inventa totales en secuencias abiertas, inválidas o pausas de tipo distinto',()=>{
+ for(const list of [[['IN',8]],[['OUT',17]],[['IN',8],['BREAK_START',12],['OUT',17]]])assert.equal(calculateDay(events(list)).effective,null);
+ const list=events([['IN',8],['BREAK_START',12],['BREAK_END',13],['OUT',17]]);list[1].action='MEAL';list[2].action='REST';
+ assert.equal(calculateDay(list).effective,null);
 });
-test('Descanso marcado utiliza tiempo real y faltante deja N/D',()=>{
- const ctx={...context,plan:{...context.plan,marked:true}};
- const row=calculateDay(events([['IN',8],['BREAK_START',13],['BREAK_END',13.5],['OUT',17]]),ctx);
- assert.equal(row.effective,8.5*H);assert.equal(row.extraStart,base+16.5*H);
- assert.equal(calculateDay(events([['IN',8],['OUT',17]]),ctx).effective,null);
-});
-test('Jornadas abiertas, sin contexto y secuencias inválidas no inventan totales',()=>{
- for(const [list,ctx] of [[[['IN',8]],context],[[['IN',8],['OUT',17]],null],[[['OUT',17]],context]])assert.equal(calculateDay(events(list),ctx).effective,null);
- const row=calculateDay(events([['IN',8],['OUT',17]]),{...context,plan:null});
- assert.equal(row.effective,9*H);assert.equal(row.extra,null);
-});
-test('Varias entradas de una jornada acumulan un solo objetivo diario',()=>{
+test('Acumula entradas de un día, pero conserva el día de inicio al cruzar medianoche',()=>{
  const rows=reportRows(events([['IN',8],['OUT',12],['IN',14],['OUT',19]]),'2026-10-01','2026-10-01');
  assert.equal(rows.length,1);assert.equal(rows[0].extra,H);assert.equal(rows[0].extraStart,base+18*H);
+ const night=events([['IN',22],['BREAK_START',25],['BREAK_END',26],['OUT',30]]).map(e=>({...e,context:null}));
+ const nights=reportRows(night,'2026-10-01','2026-10-01');assert.equal(nights.length,1);assert.equal(nights[0].effective,8*H);
 });
-test('Turno nocturno pertenece a la fecha del inicio',()=>{
- const ctx={...context,plan:{...context.plan,start:base+22*H,end:base+30*H,rests:[]}};
- const punches=events([['IN',22],['OUT',30]]);punches[0].context=ctx;
- const rows=reportRows(punches,'2026-10-01','2026-10-01');assert.equal(rows.length,1);assert.equal(rows[0].effective,8*H);
-});
-test('Contextos diferentes en un mismo día se señalan',()=>{
- const punches=events([['IN',8],['OUT',12],['IN',14],['OUT',19]]);punches[2].context={...context,schedule:'v2'};
- assert.equal(reportRows(punches,'2026-10-01','2026-10-01')[0].effective,null);
+test('Checkbox incluye todas las pausas en XLS sin cambiar horas',async()=>{
+ const list=events([['IN',8],['BREAK_START',10],['BREAK_END',10.25],['BREAK_START',12],['BREAK_END',13],['OUT',16]]);
+ list[1].action=list[2].action='REST';list[3].action=list[4].action='MEAL';
+ const rows=reportRows(list,'2026-10-01','2026-10-01'),report={type:'regular',from:'2026-10-01',to:'2026-10-01',rows};
+ const basic=cells(rows[0],'regular'),detail=cells(rows[0],'regular',false,true);
+ assert.equal(basic.length,5);assert.equal(detail.length,9);assert.deepEqual(detail.slice(0,5),basic);assert.equal(detail[4],'8:00');assert.notEqual(detail[5],'—');
+ const ws=XLSX.read(excelReport({...report,includeBreaks:true})).Sheets['Marcaje Regular'];
+ assert.equal(ws.F4.v,'Salida a comida');assert.equal(ws.E5.v,8/24);
+ const pdf=await pdfReport({...report,includeBreaks:true});assert.equal((pdf.toString('latin1').match(/\/Type \/Page\b/g)||[]).length,2);
 });
 test('XLS real preserva columnas, grupos, código, duración y texto sin fórmulas',()=>{
  const rows=reportRows(events([['IN',8],['OUT',19]]),'2026-10-01','2026-10-01');rows[0].name='=1+1';
@@ -54,7 +46,7 @@ test('XLS real preserva columnas, grupos, código, duración y texto sin fórmul
  assert.equal(bytes.subarray(0,4).toString('hex'),'d0cf11e0');
  const wb=XLSX.read(bytes,{cellNF:true});const ws=wb.Sheets['Marcaje Total'];
  assert.equal(ws.A5.v,'001');assert.equal(ws.B5.v,'=1+1');assert.equal(ws.B5.f,undefined);
- assert.equal(ws.E5.v,8/24);assert.equal(ws.H5.v,2/24);assert.equal(ws.I5.v,10/24);assert.equal(ws.E5.z,'[h]:mm');assert.equal(ws['!merges'].length,4);
+ assert.equal(ws.E5.v,8/24);assert.equal(ws.H5.v,3/24);assert.equal(ws.I5.v,11/24);assert.equal(ws.E5.z,'[h]:mm');assert.equal(ws['!merges'].length,4);
 });
 test('PDF genera archivo binario para ambos formatos con múltiples páginas',async()=>{
  const rows=reportRows(events([['IN',8],['OUT',19]]),'2026-10-01','2026-10-01');

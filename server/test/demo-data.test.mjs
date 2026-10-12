@@ -17,11 +17,11 @@ test('Carga DEMO completa, conservadora, idempotente y solo Admin',async()=>{
  assert.equal((await db.query('SELECT count(*) AS n FROM b0d_workers')).rows[0].n,16);
  assert.equal((await db.query('SELECT active FROM b0d_workers WHERE id=$1',[real])).rows[0].active,true);
  assert.equal((await db.query('SELECT count(*) AS n FROM b0d_punches')).rows[0].n,450);
- assert.equal((await db.query('SELECT count(*) AS n FROM b0d_schedule_assignments')).rows[0].n,15);
+ assert.equal((await db.query('SELECT count(*) AS n FROM b0d_schedule_assignments')).rows[0].n,0);
  const report=await loadReport(pool,new URLSearchParams({from:result.from,to:result.to,type:'total'}));
  assert.equal(report.rows.length,75);assert.equal(report.rows.filter(r=>r.extra>0).length,25);
  assert.equal(report.rows.reduce((n,r)=>n+r.extra,0)/3600000,25);
- assert.equal(report.rows.reduce((n,r)=>n+r.effective,0)/3600000,600);
+ assert.equal(report.rows.reduce((n,r)=>n+r.effective,0)/3600000,625);
  assert.ok(report.rows.every(r=>!r.issues.length));assert.ok(excelReport(report).length>0);assert.ok((await pdfReport(report)).length>0);
  const origin='http://127.0.0.1:3000',server=createApplication(pool,{origin});server.listen(0,'127.0.0.1');await once(server,'listening');const base=`http://127.0.0.1:${server.address().port}`;let cookie='';
  const req=(path,method='GET',body)=>fetch(base+path,{method,headers:{Origin:origin,Cookie:cookie,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});

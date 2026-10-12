@@ -176,6 +176,14 @@ final class WorkersDb extends SQLiteOpenHelper {
     Punch punch(String workerId, String kind) {
         return punch(workerId, kind, null, 0);
     }
+    Punch punchManualAction(String workerId, String action) {
+        if ("RETURN".equals(action)) {
+            try(Cursor c=getReadableDatabase().rawQuery("SELECT f.action FROM punches p LEFT JOIN facial_punch_details f ON f.seq=p.seq WHERE p.worker_id=? ORDER BY p.seq DESC LIMIT 1",new String[]{workerId})){
+                action=c.moveToFirst()&&!c.isNull(0)?c.getString(0):"REST";
+            }
+        }
+        return punch(workerId,null,action,0);
+    }
     Punch punchFace(String workerId, String action, double score) {
         if (!Double.isFinite(score) || score < FaceMatchRules.MIN_SCORE || score > 1)
             throw new RuleError(R.string.face_unknown);
@@ -206,18 +214,25 @@ final class WorkersDb extends SQLiteOpenHelper {
             AttendanceRepository reports = new AttendanceRepository(db);
             AttendanceRepository.Context context = reports.forAction(workerId, last == null ? null : last.kind, now, zone);
             PunchRules.Result result = PunchRules.validate(worker.active, last == null ? null : last.kind,
-                    last == null ? 0 : last.time, kind, now, context.plan != null && context.plan.marked);
+                    last == null ? 0 : last.time, kind, now, true);
             if (result != PunchRules.Result.OK) throw new RuleError(result == PunchRules.Result.CLOCK ?
                     R.string.clock_error : result == PunchRules.Result.INACTIVE ? R.string.worker_not_available : R.string.sequence_error);
+            if ("BREAK_START".equals(kind)) {
+                long entry=now;
+                try(Cursor c=db.rawQuery("SELECT occurred_at FROM punches WHERE worker_id=? AND kind='IN' ORDER BY seq DESC LIMIT 1",new String[]{workerId})){
+                    if(c.moveToFirst())entry=c.getLong(0);
+                }
+                if(!SequencePolicy.allowed(this.context,action==null?"REST":action,now-entry))throw new RuleError(R.string.pause_unavailable);
+            }
             ContentValues values = new ContentValues();
             values.put("event_id", UUID.randomUUID().toString()); values.put("worker_id", workerId);
             values.put("worker_code", worker.code); values.put("worker_name", worker.name);
             values.put("kind", kind); values.put("occurred_at", now); values.put("zone_id", zone);
-            values.put("method", action == null ? "manual" : "facial");
+            values.put("method", score == 0 ? "manual" : "facial");
             long seq = db.insertOrThrow("punches", null, values);
             if (action != null) {
                 ContentValues detail = new ContentValues();
-                detail.put("seq", seq); detail.put("action", action); detail.put("score", score); detail.put("model", FaceEngine.MODEL);
+                detail.put("seq", seq); detail.put("action", action); detail.put("score", score); detail.put("model", score == 0 ? "manual" : FaceEngine.MODEL);
                 db.insertOrThrow("facial_punch_details", null, detail);
             }
             if ("IN".equals(kind)) reports.bind(seq, context);

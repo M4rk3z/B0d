@@ -64,32 +64,13 @@ public final class WorkCalculator {
         if (state != 0) presence.add(new Span(start, through));
         if (state == 2) rests.add(new Span(restStart, through));
         presence = merge(presence);
-        List<Span> plannedRests = new ArrayList<>();
-        if (plan != null) for (ScheduleRules.Break rest : plan.day.breaks) {
-            long from = plan.at(plan.day.start + rest.startOffset), to = plan.at(plan.day.start + rest.endOffset);
-            if (to < from) result.invalid = true;
-            else plannedRests.add(new Span(from, to));
-        }
-        List<Span> deductions = plan != null && !plan.marked ? merge(plannedRests) : merge(rests);
-        for (Span p : presence) for (Span rest : deductions) result.excluded += overlap(p, rest);
         long gross = 0;
         for (Span p : presence) gross += p.to - p.from;
-        result.effective = Math.max(0, gross - result.excluded);
-        if (plan != null) {
-            long target = plan.day.effectiveMinutes * 60_000L;
-            result.ordinary = Math.min(target, result.effective);
-            result.overtime = Math.max(0, result.effective - target);
-            result.late = firstEntry == Long.MAX_VALUE ? 0 : Math.max(0, firstEntry - plan.at(plan.day.start));
-            if (plan.marked) {
-                int expected = 0;
-                for (Span rest : plannedRests) {
-                    boolean present = false;
-                    for (Span p : presence) if (overlap(p, rest) > 0) present = true;
-                    if (present) expected++;
-                }
-                result.missingBreaks = completedRests + (result.resting ? 1 : 0) < expected;
-            }
-        } else { result.ordinary = -1; result.overtime = -1; result.late = -1; }
+        result.effective = Math.max(0, gross);
+        result.excluded = 0;
+        result.ordinary = Math.min(8 * 3600000L, result.effective);
+        result.overtime = Math.max(0, result.effective - 8 * 3600000L);
+        result.late = 0;
         return result;
     }
     private static long overlap(Span a, Span b) { return Math.max(0, Math.min(a.to, b.to) - Math.max(a.from, b.from)); }

@@ -36,6 +36,14 @@ test('Fundación web con PostgreSQL embebido', async t => {
       assert.equal(res.status, 200); assert.match(res.headers.get('set-cookie'), /HttpOnly; SameSite=Strict/);
       cookie = res.headers.get('set-cookie').split(';')[0]; assert.deepEqual(await res.json(), { ok: true });
     });
+    await t.test('límites editables persistentes y retiro de horarios',async()=>{
+      assert.equal((await request('/api/sequences','GET',undefined,{Cookie:''})).status,401);
+      const value={meal:{enabled:true,from:240,to:360},rest:{enabled:false,from:120,to:180}};
+      assert.equal((await request('/api/sequences','PUT',value)).status,200);
+      await migrate(pool);assert.deepEqual(await (await request('/api/sequences')).json(),value);
+      assert.equal((await request('/api/sequences','PUT',{...value,meal:{enabled:true,from:500,to:100}})).status,400);
+      assert.equal((await request('/api/schedules')).status,410);
+    });
     await t.test('alta validada y persistente', async () => {
       const res = await request('/api/workers', 'POST', { code: ' emp-1 ', name: '  María   Pérez ' });
       assert.equal(res.status, 201); assert.equal((await res.json()).name, 'María Pérez');

@@ -13,8 +13,8 @@ function showView(id, focus = false) {
   $('status').textContent = '';
   if (id !== 'tablets') { $('device-token').value = ''; $('device-secret').hidden = true; }
   if (focus && id === 'tablets' && current?.role === 'Admin') loadDevices().catch(error => { $('status').textContent = error.message; });
+  if (focus && id === 'sequences') loadSequence().catch(error=>{$('sequence-error').textContent=error.message;});
   if (focus && id === 'attendance') loadPunches().catch(error => { $('status').textContent = error.message; });
-  if (focus && id === 'schedules' && current) loadSchedules().catch(error => { $('status').textContent = error.message; });
 }
 for (const button of document.querySelectorAll('[data-view]')) button.addEventListener('click', () => showView(button.dataset.view, true));
 async function api(path, options = {}) {
@@ -32,7 +32,7 @@ const write = (path, data, method = 'POST') => api(path, { method, headers: { 'C
     if (logged) document.querySelector('.app-header').after($('status'));
     else $('login').insertBefore($('status'), $('login').querySelector('button'));
     if (!logged) { $('report-preview').replaceChildren(); $('report-status').textContent = ''; }
-    if (!logged) { $('password-dialog').close();finishConfirm(false);scheduleRows=[];scheduleId=null;scheduleRevision=null;scheduleDirty=false;weekDraft=[];$('day-dialog').close();$('schedule-form').reset();$('schedule-days').replaceChildren();$('schedule-list').replaceChildren(); }
+    if (!logged) { $('password-dialog').close();finishConfirm(false); }
   if (!logged) { $('device-token').value = ''; $('device-secret').hidden = true; $('devices').replaceChildren(); $('punches').replaceChildren(); }
   $('login').hidden = logged; $('workspace').hidden = !logged; $('logout').hidden = !logged; $('identity').hidden = !logged;
   if (!logged) { current = null; workerRows = []; $('profile').close(); $('profile-content').replaceChildren(); $('workers').replaceChildren(); $('users').replaceChildren(); $('identity').textContent = ''; $('account').reset(); $('worker').reset(); $('worker-search').value = ''; $('export-count').textContent = ''; }
@@ -44,9 +44,7 @@ async function load() {
   const admin = current.role === 'Admin';
     $('demo-seed').hidden = !admin;
   $('tablet-nav').hidden = !admin;
-  $('schedule-nav').hidden = false;
   $('settings-nav').hidden = !admin;
-  $('new-schedule').hidden = !admin;
   $('identity').textContent = `${current.username} · ${current.role}`;
   $('worker').hidden = false; $('user-list').hidden = !admin;
   $('role').replaceChildren(...(admin ? ['User', 'Admin'] : ['User']).map(role => { const option = element('option', role); option.value = role; return option; }));
@@ -79,7 +77,7 @@ function renderWorkers() {
             catch (error) { $('status').textContent = error.message; $('profile').close(); }
           }); $('profile-content').append(toggle);
         }
-        $('profile-content').append(workerEditor(record),await profileSchedule(record));
+        $('profile-content').append(workerEditor(record));
         $('profile').showModal();
       } catch (error) { $('status').textContent = error.message; } finally { open.disabled = false; }
     });
@@ -186,86 +184,11 @@ $('download-punches').addEventListener('click', async () => {
     let offset = 0; const rows = [];
     do { const page = await api(`/api/punches?offset=${offset}`); rows.push(...page.rows); offset = page.next; } while (offset !== null);
     const cell = value => { let text = String(value ?? ''); if (/^[\s]*[=+@-]/u.test(text)) text = "'" + text; return '"' + text.replaceAll('"','""') + '"'; };
-    const values = [['Evento','Código','Nombre','Marcación','Fecha UTC','Zona','Método'], ...rows.map(row => [row.event_id,row.worker_code,row.worker_name,kindLabel(row),new Date(Number(row.occurred_at)).toISOString(),row.zone_id,row.method])];
+    const values = [['Evento','Código','Nombre','Marcación','Fecha UTC','Zona','Método'], ...rows.filter(row=>$('report-breaks').checked||['IN','OUT'].includes(row.kind)).map(row => [row.event_id,row.worker_code,row.worker_name,kindLabel(row),new Date(Number(row.occurred_at)).toISOString(),row.zone_id,row.method])];
     const blob = new Blob(['\ufeff'+values.map(row => row.map(cell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = 'B0d-marcaciones.csv'; link.click(); setTimeout(() => URL.revokeObjectURL(url),1000);
   } catch (error) { $('status').textContent = error.message; } finally { $('download-punches').disabled = false; }
 });
-
-let scheduleRows=[],scheduleId=null,scheduleRevision=null,scheduleDirty=false,weekDraft=[],editingDay=1;
-const dayNames=['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
-const scheduleRules=import('/schedule-rules.js');
-const duration=n=>`${Math.floor(n/60)} h ${n%60} min`;
-const clock12=value=>{const [h,m]=value.split(':').map(Number);return `${h%12||12}:${String(m).padStart(2,'0')} ${h<12?'AM':'PM'}`;};
-function timeControl(value,label){
- const box=element('label',label,'time12');
- const input=document.createElement('input');input.type='text';input.dataset.part='time';input.value=clock12(value);input.required=true;input.maxLength=8;input.placeholder='08:00 AM';input.autocomplete='off';input.spellcheck=false;
- input.pattern='(0?[1-9]|1[0-2]):[0-5][0-9] ?[AaPp][Mm]';input.title='Escribe la hora, por ejemplo 08:30 AM o 05:45 PM';input.setAttribute('aria-label',label+' (hora AM/PM)');
- input.addEventListener('blur',()=>{input.value=input.value.trim().toUpperCase();});box.append(input);return box;
-}
-function readTime(box){
- const match=box.querySelector('[data-part=time]').value.trim().match(/^(0?[1-9]|1[0-2]):([0-5][0-9]) ?(AM|PM)$/i);
- if(!match)throw new Error('Escribe una hora válida, por ejemplo 08:30 AM');
- const hour=Number(match[1])%12+(match[3].toUpperCase()==='PM'?12:0);return String(hour).padStart(2,'0')+':'+match[2];
-}
-function readSchedule(){return {name:$('schedule-name').value,zone:$('schedule-zone').value,markBreaks:$('schedule-mark').checked,days:weekDraft.filter(d=>d.selected).map(d=>{if(!d.configured)throw new Error(`Configura ${dayNames[d.weekday-1]}`);return {weekday:d.weekday,...d.value};})};}
-async function schedulePreview(){try{const {validateSchedule}=await scheduleRules;const result=validateSchedule(readSchedule());$('schedule-summary').textContent=`${duration(result.weeklyMinutes)} efectivas / semana`;}catch(error){$('schedule-summary').textContent=error.message;}}
-function scheduleChanged(){scheduleDirty=true;schedulePreview();}
-function renderWeek(){
- $('schedule-days').replaceChildren();
- for(const d of weekDraft){const card=element('article','','calendar-day '+(d.selected?(d.configured?'ready':'pending'):'off'));
-  const select=element('button',dayNames[d.weekday-1],'day-select');select.type='button';select.setAttribute('aria-pressed',String(d.selected));select.addEventListener('click',()=>{d.selected=!d.selected;scheduleChanged();renderWeek();});card.append(select);
-  card.append(element('span',!d.selected?'Libre':d.configured?'Configurado':'Por configurar','day-state'));
-  if(d.selected&&d.configured)card.append(element('p',`${clock12(d.value.start)} – ${clock12(d.value.end)}`),element('small',`${d.value.breaks.length} comida / descansos`));
-  if(d.selected){const edit=element('button',d.configured?'Editar horas':'Configurar horas');edit.type='button';edit.addEventListener('click',()=>openDay(d.weekday));card.append(edit);}
-  $('schedule-days').append(card);
- }
-}
-function addDialogBreak(rest={kind:'Comida',start:'13:00',end:'14:00'}){
- if($('day-breaks').children.length>=8){$('day-error').textContent='Máximo 8 pausas';return;}
- const row=element('div','','dialog-break');const kind=document.createElement('select');kind.setAttribute('aria-label','Tipo de pausa');for(const v of ['Comida','Descanso']){const option=element('option',v);option.value=v;kind.append(option);}kind.value=rest.kind;
- const remove=element('button','Quitar','danger');remove.type='button';remove.addEventListener('click',()=>row.remove());row.append(kind,timeControl(rest.start,'Inicio'),timeControl(rest.end,'Fin'),remove);$('day-breaks').append(row);
-}
-function openDay(day){editingDay=day;const draft=weekDraft[day-1];const value=draft.value||{start:'08:00',end:'17:00',breaks:[]};$('day-title').textContent=dayNames[day-1];$('day-times').replaceChildren(timeControl(value.start,'Entrada'),timeControl(value.end,'Salida'));$('day-breaks').replaceChildren();for(const r of value.breaks)addDialogBreak(r);$('day-error').textContent='';$('day-copy').checked=false;$('day-dialog').showModal();}
-$('day-add-break').addEventListener('click',()=>addDialogBreak());
-$('day-cancel').addEventListener('click',()=>$('day-dialog').close());
-$('day-form').addEventListener('submit',async event=>{
- event.preventDefault();
- try{
- const times=$('day-times').children;const value={start:readTime(times[0]),end:readTime(times[1]),breaks:[...$('day-breaks').children].map(row=>({kind:row.querySelector('select').value,start:readTime(row.querySelectorAll('.time12')[0]),end:readTime(row.querySelectorAll('.time12')[1])}))};
-  const {validateSchedule}=await scheduleRules;const changed=structuredClone(weekDraft);
-  for(const d of changed)if(d.weekday===editingDay||($('day-copy').checked&&d.selected)){d.value=structuredClone(value);d.configured=true;}
-  validateSchedule({name:$('schedule-name').value.trim()||'Horario',zone:$('schedule-zone').value,markBreaks:$('schedule-mark').checked,days:changed.filter(d=>d.selected&&d.configured).map(d=>({weekday:d.weekday,...d.value}))});
-  weekDraft=changed;scheduleChanged();renderWeek();$('day-dialog').close();
- }catch(error){$('day-error').textContent=error.message;}
-});
-function editSchedule(row=null){
- $('schedule-form').hidden=!row && current?.role!=='Admin';
- if(scheduleDirty&&!confirm('¿Descartar cambios sin guardar?'))return;
- scheduleId=row?.id||null;scheduleRevision=row?.revision||null;$('delete-schedule').hidden=!scheduleId || current?.role!=='Admin';const value=row?.definition||{name:'',zone:Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC',markBreaks:false,days:[]};
- $('schedule-name').value=value.name;$('schedule-zone').value=value.zone;$('schedule-mark').checked=value.markBreaks;
- weekDraft=dayNames.map((_,i)=>{const d=value.days.find(d=>d.weekday===i+1);return {weekday:i+1,selected:Boolean(d),configured:Boolean(d),value:d?{start:d.start,end:d.end,breaks:structuredClone(d.breaks)}:null};});
- $('schedule-message').textContent='';$('save-schedule').textContent=scheduleId?'Guardar cambios':'Crear horario';scheduleDirty=false;renderWeek();schedulePreview();renderSchedules();
-}
-function renderSchedules(){
- $('schedule-list').replaceChildren();const query=$('schedule-search').value.trim().toLocaleLowerCase('es');const rows=scheduleRows.filter(row=>row.definition.name.toLocaleLowerCase('es').includes(query));if(!rows.length)$('schedule-list').append(element('p','Sin horarios'));
- for(const row of rows){const button=element('button','','schedule-choice');button.type='button';button.setAttribute('aria-pressed',String(row.id===scheduleId));button.append(element('strong',row.definition.name),element('span',`${row.definition.days.length} días · ${duration(row.definition.weeklyMinutes)}`));button.addEventListener('click',async()=>{try{scheduleRows=await api('/api/schedules');editSchedule(scheduleRows.find(r=>r.id===row.id));}catch(error){$('schedule-message').textContent=error.message;}});$('schedule-list').append(button);}
-}
-async function loadSchedules(){scheduleRows=await api('/api/schedules');if(!$('schedule-days').children.length)editSchedule();else renderSchedules();}
-$('schedule-search').addEventListener('input',renderSchedules);$('new-schedule').addEventListener('click',()=>editSchedule());$('schedule-form').addEventListener('input',scheduleChanged);$('schedule-form').addEventListener('change',scheduleChanged);
-$('schedule-form').addEventListener('submit',async event=>{
- event.preventDefault();$('save-schedule').disabled=true;
- try{const {validateSchedule}=await scheduleRules;const definition=validateSchedule(readSchedule());const saved=await write(scheduleId?`/api/schedules/${scheduleId}`:'/api/schedules',{...definition,revision:scheduleRevision},scheduleId?'PATCH':'POST');scheduleDirty=false;scheduleRows=await api('/api/schedules');editSchedule(saved);$('schedule-message').textContent='';}catch(error){$('schedule-message').textContent=error.message;}finally{$('save-schedule').disabled=false;}
-});
-async function profileSchedule(worker){
- const [schedules,assignments]=await Promise.all([api('/api/schedules'),api('/api/schedule-assignments')]);
- const box=element('section','','profile-schedule');box.append(element('h3','Horario'));const last=assignments.find(a=>a.worker_id===worker.id);box.append(element('p',last?`${last.name} · v${last.revision} · desde ${last.effective_date}`:'Sin horario web asignado','muted'));
- const form=document.createElement('form');const select=document.createElement('select');select.setAttribute('aria-label','Horario');for(const row of schedules){const option=element('option',`${row.definition.name} · v${row.revision}`);option.value=row.id;select.append(option);}if(last && schedules.some(s=>s.id===last.schedule_id))select.value=last.schedule_id;
- const date=document.createElement('input');date.type='date';date.required=true;date.setAttribute('aria-label','Fecha de inicio');const today=new Date();date.value=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
- const label=element('label','Aplicar desde');label.append(date);const save=element('button','Guardar asignación');save.disabled=!schedules.length;const message=element('p','');message.setAttribute('role','status');form.append(select,label,save,message);
- form.addEventListener('submit',async event=>{event.preventDefault();save.disabled=true;try{await write('/api/schedule-assignments',{workerId:worker.id,scheduleId:select.value,date:date.value});message.textContent='';}catch(error){message.textContent=error.message;}finally{save.disabled=!schedules.length;}});
- const edit=element('button','Editar horario');edit.type='button';edit.disabled=!schedules.length;edit.addEventListener('click',async()=>{try{scheduleRows=await api('/api/schedules');const row=scheduleRows.find(row=>row.id===select.value);$('profile').close();showView('schedules');editSchedule(row);}catch(error){message.textContent=error.message;}});box.append(form,edit);return box;
-}
 
 let confirmResolve=null,passwordUser=null;
 function confirmAction(message){
@@ -286,23 +209,16 @@ submit('password-form',async()=>{
  if(user.id===current.id){visible(false);$('status').textContent='';}else $('status').textContent='';
  }catch(error){$('password-message').textContent=error.message;}
 });
-$('delete-schedule').addEventListener('click',async()=>{
- const id=scheduleId;if(!id||!await confirmAction('¿Eliminar este horario del catálogo? Se conservarán las asignaciones y jornadas que ya lo utilizan.'))return;
- $('delete-schedule').disabled=true;
- try{await write('/api/schedules/'+id,{},'DELETE');scheduleDirty=false;scheduleRows=await api('/api/schedules');editSchedule();$('schedule-message').textContent='';}
- catch(error){$('schedule-message').textContent=error.message;}finally{$('delete-schedule').disabled=false;}
-});
-
 const reportToday=new Date(), reportDate=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 $('report-to').value=reportDate(reportToday);$('report-from').value=reportDate(new Date(reportToday.getFullYear(),reportToday.getMonth(),1));
-function reportParams(format){return new URLSearchParams({from:$('report-from').value,to:$('report-to').value,type:$('report-type').value,format});}
+function reportParams(format){return new URLSearchParams({from:$('report-from').value,to:$('report-to').value,type:$('report-type').value,includeBreaks:String($('report-breaks').checked),format});}
 async function runReport(format){
  if(!$('report-form').reportValidity())return;
  const buttons=$('report-form').querySelectorAll('button');buttons.forEach(b=>b.disabled=true);$('report-status').textContent='';
  try{
   if(format==='json'){
    const data=await api('/api/reports?'+reportParams(format));const table=document.createElement('table'),head=document.createElement('thead'),body=document.createElement('tbody');
-   if(data.type==='total'){const groups=document.createElement('tr');for(const [label,span,css] of [['',2,''],['Horario Regular',3,'regular-group'],['Horas Extras',3,'extra-group'],['Horas regulares + extras',1,'']]){const th=element('th',label,css);th.colSpan=span;groups.append(th);}head.append(groups);}
+   if(data.type==='total'&&!data.includeBreaks){const groups=document.createElement('tr');for(const [label,span,css] of [['',2,''],['Jornada regular',3,'regular-group'],['Horas Extras',3,'extra-group'],['Horas regulares + extras',1,'']]){const th=element('th',label,css);th.colSpan=span;groups.append(th);}head.append(groups);}
    const labels=document.createElement('tr');for(const label of data.headers){const th=element('th',label.replace('*',''));if(data.note && label.includes('Salida'))th.title=data.note;labels.append(th);}head.append(labels);table.append(head,body);
    data.table.forEach((cells,index)=>{const tr=document.createElement('tr');for(const cell of cells)tr.append(element('td',cell));if(data.rows[index].issues.length){tr.className='report-issue';tr.title=data.rows[index].issues.join('; ');}body.append(tr);});$('report-preview').replaceChildren(table);
    const notes=data.rows.filter(row=>row.issues.length);if(notes.length){const details=document.createElement('details');details.append(element('summary',`Observaciones (${notes.length})`));for(const row of notes)details.append(element('p',`${row.date} · ${row.code}: ${row.issues.join('; ')}`));$('report-preview').append(details);}
@@ -314,10 +230,10 @@ async function runReport(format){
  }catch(error){$('report-status').textContent=error.message;}finally{buttons.forEach(b=>b.disabled=false);}
 }
 $('report-form').addEventListener('submit',event=>{event.preventDefault();runReport('json');});$('report-xls').addEventListener('click',()=>runReport('xls'));$('report-pdf').addEventListener('click',()=>runReport('pdf'));
-for(const id of ['report-from','report-to','report-type'])$(id).addEventListener('change',()=>{$('report-preview').replaceChildren();$('report-status').textContent='';});
+for(const id of ['report-from','report-to','report-type','report-breaks'])$(id).addEventListener('change',()=>{$('report-preview').replaceChildren();$('report-status').textContent='';});
 
 $('demo-seed').addEventListener('click',async()=>{
- if(!await confirmAction('Cargar 15 colaboradores DEMO inactivos, 3 horarios y 75 jornadas del 28 de septiembre al 2 de octubre de 2026. Incluye 25 horas extras. No modifica personal real ni duplica una carga anterior.'))return;
+ if(!await confirmAction('Cargar 15 colaboradores DEMO inactivos y 75 jornadas del 28 de septiembre al 2 de octubre de 2026. Incluye 25 horas extras. No modifica personal real ni duplica una carga anterior.'))return;
  $('demo-seed').disabled=true;
  try{const data=await write('/api/demo-data',{confirmation:'DEMO-15'});$('report-from').value=data.from;$('report-to').value=data.to;await loadWorkers();await loadPunches();await runReport('json');$('report-status').textContent='';}
  catch(error){$('report-status').textContent=error.message;}finally{$('demo-seed').disabled=false;}
@@ -344,3 +260,14 @@ function updateHeaderClock(){
  $('header-week').textContent='Semana '+String(isoWeek(now)).padStart(2,'0');
 }
 updateHeaderClock();setInterval(()=>{if(!document.hidden)updateHeaderClock();},1000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)updateHeaderClock();});
+
+async function loadSequence(){
+ const value=await api('/api/sequences');
+ for(const key of ['meal','rest']){$(key+'-enabled').checked=value[key].enabled;$(key+'-from').value=value[key].from/60;$(key+'-to').value=value[key].to/60;}
+ $('sequence-error').textContent='';
+}
+$('sequence-form').addEventListener('submit',async event=>{
+ event.preventDefault();const button=event.currentTarget.querySelector('button');button.disabled=true;
+ try{const value={};for(const key of ['meal','rest'])value[key]={enabled:$(key+'-enabled').checked,from:Math.round(Number($(key+'-from').value)*60),to:Math.round(Number($(key+'-to').value)*60)};await write('/api/sequences',value,'PUT');$('sequence-error').textContent='';}
+ catch(error){$('sequence-error').textContent=error.message;}finally{button.disabled=false;}
+});

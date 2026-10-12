@@ -38,6 +38,11 @@ test('Sincronización autorizada, durable e idempotente', async t => {
    assert.equal((await request('/api/device/punch','POST',{...event,kind:'OUT'},true)).status,409);
    assert.equal((await db.query('SELECT kind FROM b0d_punches')).rows[0].kind,'IN');
   });
+  await t.test('tablet sincroniza límites configurados',async()=>{
+   const value={meal:{enabled:true,from:240,to:360},rest:{enabled:false,from:0,to:1440}};
+   assert.equal((await request('/api/sequences','PUT',value)).status,200);
+   assert.deepEqual(await (await request('/api/device/sequences','GET',undefined,true)).json(),value);
+  });
   await t.test('horario histórico confirmado es idempotente e inmutable',async()=>{
    const date=new Date(event.time).toISOString().slice(0,10);
    const context={date,zone:'UTC',schedule:null,plan:null};
@@ -46,7 +51,8 @@ test('Sincronización autorizada, durable e idempotente', async t => {
    assert.equal((await send({...context,schedule:'other'})).status,409);
    assert.equal((await send({...context,zone:'bad'})).status,400);
    assert.equal((await request('/api/device/context','POST',{eventId:randomUUID(),context},true)).status,403);
-   const q=`/api/reports?from=${date}&to=${date}&type=total`;
+   const localDate=new Intl.DateTimeFormat('en-CA',{timeZone:event.zone,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(event.time));
+   const q=`/api/reports?from=${localDate}&to=${localDate}&type=total`;
    assert.equal((await fetch(base+q)).status,401);
    const report=await (await request(q)).json();assert.equal(report.rows.length,1);assert.equal(report.rows[0].effective,null);
    for(const format of ['xls','pdf']){const res=await request(q+'&format='+format);assert.equal(res.status,200);assert.match(res.headers.get('content-disposition'),new RegExp('\\.'+format));}

@@ -178,4 +178,5 @@
     <string name="face_too_soon">Marcación reciente. Espera unos segundos.</string>
     <string name="face_wrong_break">Registra el regreso con el mismo botón: Comida o Break.</string>
     <string name="kiosk_brand" translatable="false">B0D</string>
+    <string name="pause_unavailable">Esta pausa está desactivada o fuera del límite de horas. Puedes continuar tu jornada o registrar salida.</string>
 </resources>

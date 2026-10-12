@@ -389,8 +389,8 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         outer.addView(nav,new LinearLayout.LayoutParams(-1,dp(80)));
         String[] labels = {"Personal", "Horarios", "Inicio", "Historial", "Salir"};
         int[] icons = {R.drawable.ic_person,R.drawable.ic_nav_clock,R.drawable.ic_nav_home,R.drawable.ic_nav_folder,android.R.drawable.ic_lock_power_off};
-        int[] pages = {R.string.workers_title,R.string.schedules_title,R.string.admin_title,R.string.punch_history,0};
-        Runnable[] actions = {this::showWorkers,this::showSchedules,this::showAdmin,this::showHistory,this::showHome};
+        int[] pages = {R.string.workers_title,R.string.admin_title,R.string.punch_history,0};
+        Runnable[] actions = {this::showWorkers,this::showAdmin,this::showHistory,this::showHome};
         for (int i=0;i<labels.length;i++) {
             LinearLayout item = new LinearLayout(this); item.setOrientation(LinearLayout.VERTICAL); item.setGravity(Gravity.CENTER);
             boolean selected = title == pages[i]; boolean home = i == 2;
@@ -528,10 +528,8 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
             avatar.setBackground(surface(0xffe3eaf3,0xffe3eaf3,16));
             panel.addView(avatar,new LinearLayout.LayoutParams(-1,dp(110)));
             text(row.name,19); text(row.code,14);
-            text(row.scheduleSummary == null ? getString(R.string.no_schedule_assigned) : row.scheduleSummary,14);
             Button face = button(row.hasFace ? R.string.face_registered : R.string.face_register, () -> showFace(row));
             face.setText(row.hasFace ? "Perfil facial ✓" : "Registrar rostro"); face.setTextSize(14);
-            Button schedule = button(R.string.assign_schedule,() -> showAssignSchedule(row)); schedule.setTextSize(14);
             Button state = button(row.active ? R.string.deactivate_worker : R.string.activate_worker,() -> confirmStateChange(row));
             state.setText(row.active ? "● Activo" : "○ Inactivo"); state.setTextSize(14);
             Button delete = button(R.string.delete_worker,() -> confirmDelete(row)); delete.setTextSize(14);
@@ -743,14 +741,11 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         boolean inside = state.last != null && !"OUT".equals(state.last.kind);
         boolean resting = state.last != null && "BREAK_START".equals(state.last.kind);
         text(resting ? R.string.state_resting : inside ? R.string.state_working : R.string.state_outside, 22);
-        if (state.plan != null) {
-            text(getString(R.string.current_plan, state.plan.name, ScheduleRules.clock(state.plan.day.start), ScheduleRules.clock(state.plan.day.end)), 16);
-            text(state.plan.marked ? R.string.mode_marked : R.string.mode_automatic, 16);
-        } else text(R.string.no_calculation_schedule, 16);
         if (!inside) button(R.string.register_entry, () -> clockAction(state, "IN"));
-        else if (resting) button(R.string.end_rest, () -> clockAction(state, "BREAK_END"));
+        else if (resting) button(R.string.end_rest, () -> clockAction(state, "RETURN"));
         else {
-            if (state.plan != null && state.plan.marked) button(R.string.start_rest, () -> clockAction(state, "BREAK_START"));
+            button(R.string.kiosk_meal, () -> clockAction(state, "MEAL"));
+            button(R.string.kiosk_break, () -> clockAction(state, "REST"));
             button(R.string.register_exit, () -> clockAction(state, "OUT"));
         }
         if (state.summary != null) renderSummary(state.summary);
@@ -771,7 +766,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
     }
     private void clockAction(WorkersDb.CheckInState state, String kind) {
         runAttendanceTask(false, db -> {
-            WorkersDb.Punch saved = db.punch(state.worker.id, kind);
+            WorkersDb.Punch saved = db.punchManualAction(state.worker.id, kind);
             return new ClockOutcome(db.findForClock(state.worker.code), saved);
         }, outcome -> showClockWorker(outcome.state, getString(R.string.saved_inline, formatPunch(outcome.punch))));
     }
@@ -793,12 +788,10 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
     private void renderSummary(AttendanceRepository.Summary row) {
         WorkCalculator.Result r = row.result;
         text(getString(R.string.day_summary, row.context.date.toString()), 22);
-        text(row.context.plan == null ? getString(R.string.no_calculation_schedule) : row.context.plan.name, 16);
+
         text(r.provisional() ? R.string.provisional_summary : R.string.closed_summary, 16);
         metricPair(R.string.effective_metric, duration(r.effective), R.string.excluded_metric, duration(r.excluded));
         metricPair(R.string.ordinary_metric, duration(r.ordinary), R.string.extra_metric, duration(r.overtime));
-        metricPair(R.string.late_metric, duration(r.late), R.string.target_metric,
-                duration(row.context.plan == null ? -1 : row.context.plan.day.effectiveMinutes * 60_000L));
         if (r.missingBreaks) text(R.string.missing_rest_incident, 16).setTextColor(0xffa42c35);
         if (r.invalid) text(R.string.calculation_incident, 16).setTextColor(0xffa42c35);
     }
@@ -891,181 +884,6 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
                     screen(title);
                     text(failure, 18);
                     button(admin ? R.string.back_admin : R.string.back_home, admin ? this::showAdmin : this::showHome);
-                }
-            });
-        });
-    }
-    private void showSchedules() {
-        if (!requireAdmin() || busy) return;
-        runScheduleTask(db -> new SchedulesRepository(db.getReadableDatabase()).list(), this::renderSchedules);
-    }
-    private void renderSchedules(List<SchedulesRepository.Schedule> rows) {
-        if (!requireAdmin()) return;
-        screen(R.string.schedules_title);
-
-        if (!new CloudSync(this).linked()) button(R.string.create_schedule, this::showCreateSchedule);
-        else text("Crea y edita los horarios en la web.", 16);
-        button(R.string.back_admin, this::showAdmin);
-        if (rows.isEmpty()) text(R.string.no_schedules, 18);
-        for (SchedulesRepository.Schedule schedule : rows) {
-            text(schedule.name, 24);
-            text(schedule.markBreaks ? R.string.mode_marked : R.string.mode_automatic, 16);
-            text(schedule.zone, 14);
-            for (ScheduleRules.Day day : schedule.days) {
-                String line = getString(R.string.schedule_day_summary, weekdayName(day.weekday),
-                        ScheduleRules.clock(day.start), ScheduleRules.clock(day.end),
-                        day.effectiveMinutes / 60, day.effectiveMinutes % 60);
-                text(line, 18);
-                if (day.end >= 1440) text(R.string.next_day_exit, 14);
-                if (!day.breaks.isEmpty()) {
-                    StringBuilder intervals = new StringBuilder();
-                    for (ScheduleRules.Break rest : day.breaks) {
-                        if (intervals.length() > 0) intervals.append("; ");
-                        intervals.append(ScheduleRules.clock(day.start + rest.startOffset)).append("–")
-                                .append(ScheduleRules.clock(day.start + rest.endOffset));
-                    }
-                    text(getString(R.string.breaks_summary, intervals.toString()), 16);
-                }
-            }
-        }
-    }
-    private String weekdayName(int weekday) {
-        return getResources().getStringArray(R.array.weekdays)[weekday - 1];
-    }
-    private void showCreateSchedule() {
-        if (!requireAdmin() || busy) return;
-        screen(R.string.create_schedule);
-
-        EditText name = workerField(R.string.schedule_name, 80);
-        CheckBox marked = new CheckBox(this);
-        marked.setText(R.string.mark_breaks_checkbox);
-        marked.setTextSize(17); marked.setMinHeight(dp(56));
-        panel.addView(marked, params());
-        text(R.string.break_mode_help, 16);
-        CheckBox[] enabled = new CheckBox[7];
-        EditText[] starts = new EditText[7], ends = new EditText[7], breaks = new EditText[7];
-        for (int i = 0; i < 7; i++) {
-            enabled[i] = new CheckBox(this);
-            enabled[i].setText(weekdayName(i + 1)); enabled[i].setTextSize(20); enabled[i].setMinHeight(dp(56));
-            panel.addView(enabled[i], params());
-            LinearLayout parent = panel;
-            LinearLayout fields = new LinearLayout(this);
-            fields.setOrientation(LinearLayout.VERTICAL);
-            fields.setPadding(dp(12), dp(12), dp(12), dp(4));
-            fields.setBackground(surface(0xfff5f7fb, 0xffe3e9f1, 16));
-            parent.addView(fields, params());
-            panel = fields;
-            starts[i] = workerField(R.string.schedule_start, 5);
-            starts[i].setInputType(InputType.TYPE_CLASS_DATETIME | InputType.TYPE_DATETIME_VARIATION_TIME);
-            starts[i].setText(R.string.default_start);
-            ends[i] = workerField(R.string.schedule_end, 5);
-            ends[i].setInputType(InputType.TYPE_CLASS_DATETIME | InputType.TYPE_DATETIME_VARIATION_TIME);
-            ends[i].setText(R.string.default_end);
-            breaks[i] = workerField(R.string.schedule_breaks, 120);
-            text(R.string.break_format_help, 14);
-            panel = parent;
-            fields.setVisibility(View.GONE);
-            enabled[i].setOnCheckedChangeListener((view, checked) -> fields.setVisibility(checked ? View.VISIBLE : View.GONE));
-        }
-        TextView status = text(R.string.empty, 16);
-        button(R.string.save_schedule, () -> {
-            if (!requireAdmin() || busy) return;
-            String title = name.getText().toString().trim();
-            if (title.isEmpty()) { status.setText(R.string.schedule_name_required); return; }
-            List<ScheduleRules.Day> days = new java.util.ArrayList<>();
-            try {
-                for (int i = 0; i < 7; i++) if (enabled[i].isChecked()) {
-                    try { days.add(new ScheduleRules.Day(i + 1, starts[i].getText().toString(), ends[i].getText().toString(), breaks[i].getText().toString())); }
-                    catch (IllegalArgumentException error) { throw new IllegalArgumentException(weekdayName(i + 1) + ": " + error.getMessage()); }
-                }
-                ScheduleRules.validateWeek(days);
-            } catch (IllegalArgumentException error) { status.setText(error.getMessage()); return; }
-            boolean requireBreakMarks = marked.isChecked();
-            ((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(name.getWindowToken(), 0);
-            runScheduleTask(db -> {
-                SchedulesRepository repo = new SchedulesRepository(db.getWritableDatabase());
-                repo.create(title, requireBreakMarks, days);
-                return repo.list();
-            }, this::renderSchedules);
-        });
-        button(R.string.cancel_worker, this::showSchedules);
-    }
-    private void showAssignSchedule(WorkersDb.Worker worker) {
-        if (!requireAdmin() || busy) return;
-        if (new CloudSync(this).linked()) {
-            screen(R.string.assign_schedule); text("Asigna el horario desde el perfil del colaborador en la web.",18);
-            button(R.string.back_admin,this::showAdmin); return;
-        }
-        runScheduleTask(db -> {
-            SchedulesRepository repo = new SchedulesRepository(db.getReadableDatabase());
-            return new ScheduleAssignmentData(repo.list(), repo.assignmentHistory(worker.id));
-        }, data -> {
-            screen(R.string.assign_schedule);
-            text(worker.name, 24);
-
-            EditText date = workerField(R.string.effective_date, 10);
-            date.setInputType(InputType.TYPE_CLASS_DATETIME | InputType.TYPE_DATETIME_VARIATION_DATE);
-            date.setText(java.time.LocalDate.now().toString());
-            TextView status = text(R.string.empty, 16);
-            if (data.schedules.isEmpty()) text(R.string.no_schedules, 18);
-            for (SchedulesRepository.Schedule schedule : data.schedules) {
-                Button choose = button(R.string.assign_schedule, () -> {
-                    if (!requireAdmin() || busy) return;
-                    final String since = date.getText().toString().trim();
-                    try { java.time.LocalDate.parse(since); }
-                    catch (java.time.DateTimeException error) { status.setText(R.string.invalid_effective_date); return; }
-                    confirmationDialog = new AlertDialog.Builder(this).setTitle(R.string.assign_schedule)
-                            .setMessage(getString(R.string.confirm_assignment, schedule.name, worker.name, since))
-                            .setNegativeButton(R.string.cancel_worker, null)
-                            .setPositiveButton(R.string.confirm_worker, (dialog, which) -> {
-                                if (!requireAdmin() || busy) return;
-                                runScheduleTask(db -> {
-                                    new SchedulesRepository(db.getWritableDatabase()).assign(worker.id, schedule.id, since);
-                                    return db.list();
-                                }, this::renderWorkers);
-                            }).create();
-                    confirmationDialog.show();
-                });
-                choose.setText(getString(R.string.choose_named_schedule, schedule.name));
-            }
-            button(R.string.workers_title, this::showWorkers);
-            text(R.string.assignment_history, 22);
-            if (data.history.isEmpty()) text(R.string.no_schedule_assigned, 16);
-            for (String item : data.history) text(item, 16);
-        });
-    }
-    private static final class ScheduleAssignmentData {
-        final List<SchedulesRepository.Schedule> schedules;
-        final List<String> history;
-        ScheduleAssignmentData(List<SchedulesRepository.Schedule> schedules, List<String> history) { this.schedules = schedules; this.history = history; }
-    }
-    private <T> void runScheduleTask(AttendanceTask<T> task, java.util.function.Consumer<T> success) {
-        if (!requireAdmin() || busy) return;
-        busy = true;
-        screen(R.string.schedules_title);
-        text(R.string.working, 18);
-        int request = generation;
-        WORKER.execute(() -> {
-            T result = null;
-            String error = null;
-            try (WorkersDb db = new WorkersDb(getApplicationContext())) { result = task.run(db); }
-            catch (WorkersDb.RuleError exception) { error = getString(exception.message); }
-            catch (SQLiteConstraintException exception) { error = getString(R.string.schedule_conflict); }
-            catch (IllegalArgumentException exception) { error = exception.getMessage(); }
-            catch (RuntimeException exception) { error = getString(R.string.schedule_error); }
-            final T value = result;
-            final String failure = error;
-            handler.post(() -> {
-                busy = false;
-                if (isDestroyed() || !foreground) return;
-                if (request != generation || !authenticated) { showHome(); return; }
-                if (failure == null) success.accept(value);
-                else {
-                    screen(R.string.schedules_title);
-                    text(failure, 18);
-                    button(R.string.schedules_title, this::showSchedules);
-                    button(R.string.workers_title, this::showWorkers);
-                    button(R.string.back_admin, this::showAdmin);
                 }
             });
         });

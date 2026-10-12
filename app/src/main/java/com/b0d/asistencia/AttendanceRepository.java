@@ -32,30 +32,10 @@ final class AttendanceRepository {
         Summary(Context context, String code, String name) { this.context = context; this.code = code; this.name = name; }
     }
     private Context load(String scheduleId, String zone, LocalDate date) {
-        WorkCalculator.Plan plan = null;
-        if (scheduleId != null) {
-            SchedulesRepository.Schedule schedule = new SchedulesRepository(db).get(scheduleId);
-            if (schedule != null) for (ScheduleRules.Day day : schedule.days) if (day.weekday == date.getDayOfWeek().getValue()) {
-                plan = new WorkCalculator.Plan(schedule.id, schedule.name, schedule.zone, date, day, schedule.markBreaks);
-                break;
-            }
-        }
-        return new Context(scheduleId, zone, date, plan);
-    }
-    private Context onDate(String worker, LocalDate date, String fallbackZone) {
-        try (Cursor c = db.rawQuery("SELECT s.id,s.zone_id FROM schedule_assignments a JOIN schedules s ON s.id=a.schedule_id WHERE a.worker_id=? AND a.effective_date<=? ORDER BY a.effective_date DESC LIMIT 1", new String[]{worker, date.toString()})) {
-            return c.moveToFirst() ? load(c.getString(0), c.getString(1), date) : load(null, fallbackZone, date);
-        }
+        return new Context(null, zone, date, null);
     }
     Context choose(String worker, long time, String zone) {
-        LocalDate date = Instant.ofEpochMilli(time).atZone(ZoneId.of(zone)).toLocalDate();
-        Context today = onDate(worker, date, zone);
-        LocalDate scheduleDate = Instant.ofEpochMilli(time).atZone(ZoneId.of(today.zone)).toLocalDate();
-        if (!date.equals(scheduleDate)) { date = scheduleDate; today = onDate(worker, date, today.zone); }
-        Context yesterday = onDate(worker, date.minusDays(1), today.zone);
-        if (yesterday.plan != null && yesterday.plan.day.end >= 1440 &&
-                time >= yesterday.plan.at(yesterday.plan.day.start) && time < yesterday.plan.at(yesterday.plan.day.end)) return yesterday;
-        return today;
+        return new Context(null, zone, Instant.ofEpochMilli(time).atZone(ZoneId.of(zone)).toLocalDate(), null);
     }
     void bind(long seq, Context context) {
         ContentValues values = new ContentValues();
@@ -69,9 +49,6 @@ final class AttendanceRepository {
         }
     }
     Context forEntry(long seq, String worker, long time, String zone) {
-        try (Cursor c = db.query("shift_contexts", new String[]{"schedule_id","work_date","zone_id"}, "entry_seq=?", new String[]{Long.toString(seq)}, null, null, null)) {
-            if (c.moveToFirst()) return load(c.isNull(0) ? null : c.getString(0), c.getString(2), LocalDate.parse(c.getString(1)));
-        }
         return choose(worker, time, zone);
     }
     Context forAction(String worker, String lastKind, long now, String zone) {
