@@ -222,7 +222,7 @@ final class WorkersDb extends SQLiteOpenHelper {
                 try(Cursor c=db.rawQuery("SELECT occurred_at FROM punches WHERE worker_id=? AND kind='IN' ORDER BY seq DESC LIMIT 1",new String[]{workerId})){
                     if(c.moveToFirst())entry=c.getLong(0);
                 }
-                if(!SequencePolicy.allowed(this.context,action==null?"REST":action,now-entry))throw new RuleError(R.string.pause_unavailable);
+                if(!SequencePolicy.allowed(this.context,workerId,action==null?"REST":action,now-entry))throw new RuleError(R.string.pause_unavailable);
             }
             ContentValues values = new ContentValues();
             values.put("event_id", UUID.randomUUID().toString()); values.put("worker_id", workerId);

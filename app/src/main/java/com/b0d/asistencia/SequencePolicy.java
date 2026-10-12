@@ -5,11 +5,15 @@ final class SequencePolicy {
  static void save(Context context,JSONObject value){
   context.getSharedPreferences("sequence-policy",Context.MODE_PRIVATE).edit().putString("rules",value.toString()).apply();
  }
- static boolean allowed(Context context,String action,long elapsed){
+ static void saveWorker(Context context,String worker,JSONObject value){
+  context.getSharedPreferences("sequence-policy",Context.MODE_PRIVATE).edit().putBoolean(worker+"-meal",value.optBoolean("meal_enabled",true)).putBoolean(worker+"-rest",value.optBoolean("rest_enabled",true)).apply();
+ }
+ static boolean allowed(Context context,String worker,String action,long elapsed){
   try{
    JSONObject rules=new JSONObject(context.getSharedPreferences("sequence-policy",Context.MODE_PRIVATE).getString("rules","{}"));
    JSONObject rule=rules.optJSONObject("MEAL".equals(action)?"meal":"rest");
-   return SequenceRules.allowed(rule==null||rule.getBoolean("enabled"),rule==null?0:rule.getInt("from"),rule==null?1440:rule.getInt("to"),elapsed);
+   boolean enabled=context.getSharedPreferences("sequence-policy",Context.MODE_PRIVATE).getBoolean(worker+("MEAL".equals(action)?"-meal":"-rest"),rule==null||rule.getBoolean("enabled"));
+   return SequenceRules.allowed(enabled,rule==null?0:rule.getInt("from"),rule==null?1440:rule.getInt("to"),elapsed);
   }catch(Exception e){return false;}
  }
 }

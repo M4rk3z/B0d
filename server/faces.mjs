@@ -50,7 +50,7 @@ export async function faceRoute(pool,current,worker,method,challenge,input){
  }
  fail(false,405,'Método no permitido');
 }
-export const workerFaceQuery=`SELECT w.id,w.code,w.name,w.active,
+export const workerFaceQuery=`SELECT w.id,w.code,w.name,w.active,w.meal_enabled,w.rest_enabled,
  (f.worker_id IS NOT NULL OR EXISTS(SELECT 1 FROM b0d_device_faces d WHERE d.worker_id=w.id)) AS face_known,
  CASE WHEN f.deleted THEN false ELSE f.encrypted_samples IS NOT NULL OR EXISTS(SELECT 1 FROM b0d_device_faces d JOIN b0d_devices v ON v.id=d.device_id AND v.active WHERE d.worker_id=w.id AND d.present) END AS face_captured,
  CASE WHEN f.deleted THEN false ELSE EXISTS(SELECT 1 FROM b0d_device_faces d JOIN b0d_devices v ON v.id=d.device_id AND v.active WHERE d.worker_id=w.id AND d.present AND (f.revision IS NULL OR d.revision=f.revision)) END AS face_ready,

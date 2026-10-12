@@ -14,7 +14,7 @@ export async function deviceRoute(pool, req, path, input) {
   check(device, 401, 'Vinculación revocada o inválida');
   let result;
   if (req.method === 'GET' && path === '/api/device/workers') {
-   result = { deviceId: device.id, workers: (await client.query('SELECT id,code,name,active FROM b0d_workers ORDER BY code')).rows };
+   result = { deviceId: device.id, workers: (await client.query('SELECT id,code,name,active,meal_enabled,rest_enabled FROM b0d_workers ORDER BY code')).rows };
   } else if ((req.method==='GET'&&path==='/api/device/faces') || (req.method==='POST'&&['/api/device/face','/api/device/face-status'].includes(path))) {
    result=await deviceFaceRoute(client,device.id,path,input);
   } else if (req.method === 'GET' && path === '/api/device/sequences') {

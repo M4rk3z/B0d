@@ -40,6 +40,10 @@ export async function migrate(pool) {
     await client.query('INSERT INTO b0d_schema_version VALUES(5) ON CONFLICT DO NOTHING');
     await client.query('CREATE TABLE IF NOT EXISTS b0d_sequences(id INTEGER PRIMARY KEY CHECK(id=1),definition JSONB NOT NULL)');
     await client.query('INSERT INTO b0d_sequences VALUES(1,$1) ON CONFLICT DO NOTHING',[JSON.stringify(defaults)]);
+    await client.query('ALTER TABLE b0d_workers ADD COLUMN IF NOT EXISTS meal_enabled BOOLEAN');
+    await client.query('ALTER TABLE b0d_workers ADD COLUMN IF NOT EXISTS rest_enabled BOOLEAN');
+    await client.query("UPDATE b0d_workers SET meal_enabled=COALESCE(meal_enabled,(SELECT (definition->'meal'->>'enabled')::boolean FROM b0d_sequences WHERE id=1)),rest_enabled=COALESCE(rest_enabled,(SELECT (definition->'rest'->>'enabled')::boolean FROM b0d_sequences WHERE id=1)) WHERE meal_enabled IS NULL OR rest_enabled IS NULL");
+    await client.query('ALTER TABLE b0d_workers ALTER COLUMN meal_enabled SET DEFAULT true, ALTER COLUMN meal_enabled SET NOT NULL, ALTER COLUMN rest_enabled SET DEFAULT true, ALTER COLUMN rest_enabled SET NOT NULL');
     await client.query(await readFile(new URL('./schedules.sql', import.meta.url), 'utf8'));
     await client.query(await readFile(new URL('./assignments.sql', import.meta.url), 'utf8'));
     await client.query('ALTER TABLE b0d_schedules ADD COLUMN IF NOT EXISTS deleted BOOLEAN NOT NULL DEFAULT FALSE');
@@ -237,12 +241,13 @@ export function createApplication(pool, { origin }) {
         const id = path.slice('/api/workers/'.length); const input = await body(req);
         requireValue(/^[a-f0-9-]{36}$/.test(id) && input && (input.active === undefined || typeof input.active === 'boolean'), 'Estado inválido');
         const fields=input.name!==undefined || input.code!==undefined ? workerFields(input) : null;
-        requireValue(fields || typeof input.active==='boolean','Datos requeridos');
+        requireValue(['meal_enabled','rest_enabled'].every(key=>input[key]===undefined||typeof input[key]==='boolean'),'Selecciona comida y descanso con las casillas');
+        requireValue(fields || typeof input.active==='boolean'||typeof input.meal_enabled==='boolean'||typeof input.rest_enabled==='boolean','Datos requeridos');
         if (input.active === false) {
           const last = (await pool.query('SELECT kind FROM b0d_punches WHERE worker_id=$1 ORDER BY occurred_at DESC,event_id DESC LIMIT 1', [id])).rows[0];
           if (last && last.kind !== 'OUT') throw new HttpError(409, 'Registra y sincroniza la salida antes de desactivar');
         }
-        const result = await pool.query('UPDATE b0d_workers SET active=COALESCE($2,active),code=COALESCE($3,code),name=COALESCE($4,name),updated_at=now() WHERE id=$1 RETURNING id,code,name,active', [id,input.active??null,fields?.code??null,fields?.name??null]);
+        const result = await pool.query('UPDATE b0d_workers SET active=COALESCE($2,active),code=COALESCE($3,code),name=COALESCE($4,name),meal_enabled=COALESCE($5,meal_enabled),rest_enabled=COALESCE($6,rest_enabled),updated_at=now() WHERE id=$1 RETURNING id,code,name,active,meal_enabled,rest_enabled', [id,input.active??null,fields?.code??null,fields?.name??null,input.meal_enabled??null,input.rest_enabled??null]);
         if (!result.rows.length) throw new HttpError(404, 'Colaborador no encontrado');
         json(200,result.rows[0]); return;
       }

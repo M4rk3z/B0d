@@ -13,7 +13,6 @@ function showView(id, focus = false) {
   $('status').textContent = '';
   if (id !== 'tablets') { $('device-token').value = ''; $('device-secret').hidden = true; }
   if (focus && id === 'tablets' && current?.role === 'Admin') loadDevices().catch(error => { $('status').textContent = error.message; });
-  if (focus && id === 'sequences') loadSequence().catch(error=>{$('sequence-error').textContent=error.message;});
   if (focus && id === 'attendance') loadPunches().catch(error => { $('status').textContent = error.message; });
 }
 for (const button of document.querySelectorAll('[data-view]')) button.addEventListener('click', () => showView(button.dataset.view, true));
@@ -256,8 +255,10 @@ $('settings-nav').addEventListener('keydown',event=>{if(event.key==='Escape'){$(
 function workerEditor(record){
  const form=element('form','','profile-schedule');
  for(const [key,title] of [['name','Nombre'],['code','Código']]){const label=element('label',title),input=document.createElement('input');input.name=key;input.value=record[key];input.required=true;input.maxLength=key==='code'?20:100;label.append(input);form.append(label);}
+ const pauses=element('fieldset','','worker-pauses');pauses.append(element('legend','Checadas opcionales'));
+ for(const [key,title] of [['meal_enabled','Permitir comida'],['rest_enabled','Permitir descanso']]){const label=element('label',title,'check'),input=document.createElement('input');input.type='checkbox';input.name=key;input.checked=record[key]!==false;label.prepend(input);pauses.append(label);}form.append(pauses);
  const save=element('button','Guardar colaborador'),message=element('p','');message.setAttribute('role','status');form.append(save,message);
- form.addEventListener('submit',async event=>{event.preventDefault();save.disabled=true;try{await write('/api/workers/'+record.id,Object.fromEntries(new FormData(form)),'PATCH');await loadWorkers();$('profile').close();}catch(error){message.textContent=error.message;}finally{save.disabled=false;}});return form;
+ form.addEventListener('submit',async event=>{event.preventDefault();save.disabled=true;try{await write('/api/workers/'+record.id,{...Object.fromEntries(new FormData(form)),meal_enabled:form.elements.meal_enabled.checked,rest_enabled:form.elements.rest_enabled.checked},'PATCH');await loadWorkers();$('profile').close();}catch(error){message.textContent=error.message;}finally{save.disabled=false;}});return form;
 }
 
 function isoWeek(date){
@@ -271,17 +272,6 @@ function updateHeaderClock(){
  $('header-week').textContent='Semana '+String(isoWeek(now)).padStart(2,'0');
 }
 updateHeaderClock();setInterval(()=>{if(!document.hidden)updateHeaderClock();},1000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)updateHeaderClock();});
-
-async function loadSequence(){
- const value=await api('/api/sequences');
- for(const key of ['meal','rest']){$(key+'-enabled').checked=value[key].enabled;$(key+'-from').value=value[key].from/60;$(key+'-to').value=value[key].to/60;}
- $('sequence-error').textContent='';
-}
-$('sequence-form').addEventListener('submit',async event=>{
- event.preventDefault();const button=event.currentTarget.querySelector('button');button.disabled=true;
- try{const value={};for(const key of ['meal','rest'])value[key]={enabled:$(key+'-enabled').checked,from:Math.round(Number($(key+'-from').value)*60),to:Math.round(Number($(key+'-to').value)*60)};await write('/api/sequences',value,'PUT');$('sequence-error').textContent='';}
- catch(error){$('sequence-error').textContent=error.message;}finally{button.disabled=false;}
-});
 
 function faceLabel(worker){return !worker.face_known?'Rostro: sin sincronizar':worker.face_error?'Rostro: revisar captura':worker.face_ready?'Rostro capturado ✓':worker.face_captured?'Rostro: pendiente de tablet':'Rostro sin capturar';}
 function faceEditor(worker){

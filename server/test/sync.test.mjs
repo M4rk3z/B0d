@@ -43,6 +43,17 @@ test('Sincronización autorizada, durable e idempotente', async t => {
    assert.equal((await request('/api/sequences','PUT',value)).status,200);
    assert.deepEqual(await (await request('/api/device/sequences','GET',undefined,true)).json(),value);
   });
+  await t.test('casillas de pausas por colaborador, persistentes y sincronizadas',async()=>{
+   const rows=await(await request('/api/workers')).json(),id=rows[0].id;
+   assert.equal((await request('/api/workers/'+id,'PATCH',{meal_enabled:false,rest_enabled:true})).status,200);
+   await migrate(pool);
+   const catalog=await(await request('/api/device/workers','GET',undefined,true)).json();
+   assert.equal(catalog.workers[0].meal_enabled,false);assert.equal(catalog.workers[0].rest_enabled,true);
+   assert.equal((await request('/api/workers/'+id,'PATCH',{meal_enabled:'false'})).status,400);
+   await request('/api/workers/'+id,'PATCH',{name:rows[0].name,code:rows[0].code});
+   assert.equal((await(await request('/api/workers')).json())[0].meal_enabled,false);
+   const html=await(await request('/')).text();assert.ok(!html.includes('data-view="sequences"'));assert.ok(!html.includes('id="sequence-form"'));
+  });
   await t.test('horario histórico confirmado es idempotente e inmutable',async()=>{
    const date=new Date(event.time).toISOString().slice(0,10);
    const context={date,zone:'UTC',schedule:null,plan:null};

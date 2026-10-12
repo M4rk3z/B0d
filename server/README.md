@@ -1,5 +1,9 @@
 # B0D Control web — base 0.1.0
 
+## Actualización 0.7.0-alpha2 — pausas por colaborador
+
+La sección Secuencias se retira del menú web. En el perfil, «Permitir comida» y «Permitir descanso» se guardan con «Guardar colaborador». Son permisos individuales, editables por Admin y User. Los valores existentes se conservan durante la migración y se envían en el catálogo de sincronización. La APK 0.7.0-alpha2 aplica estas opciones incluso sin conexión después de sincronizar. Los límites de tiempo anteriores se conservan; deshabilitar una pausa no impide cerrar una que ya estaba iniciada. Los reportes y el cálculo de ocho horas no cambian.
+
 Estado: base probada localmente, no desplegada y sin conexión con la APK. Incluye login/logout y alta/consulta de colaboradores. El resto de la administración y sincronización está pendiente según ../ARQUITECTURA_WEB_RENDER.md. No reemplaza todavía la app existente.
 
 ## Desarrollo

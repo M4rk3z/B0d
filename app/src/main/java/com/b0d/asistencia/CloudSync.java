@@ -90,6 +90,7 @@ final class CloudSync {
                         localId = remoteId; values.put("id", localId); values.put("created_at", System.currentTimeMillis()); db.insertOrThrow("workers", null, values);
                         ContentValues map = new ContentValues(); map.put("local_id", localId); map.put("remote_id", remoteId); db.insertOrThrow("cloud_workers", null, map);
                     } else db.update("workers", values, "id=?", new String[]{localId});
+                    SequencePolicy.saveWorker(context,localId,worker);
                 }
                 db.setTransactionSuccessful();
             } finally { db.endTransaction(); }
