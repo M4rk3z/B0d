@@ -164,7 +164,7 @@
     <string name="kiosk_entry">Entrada</string>
     <string name="kiosk_exit">Salida</string>
     <string name="kiosk_meal">Comida</string>
-    <string name="kiosk_break">Break</string>
+    <string name="kiosk_break">Descanso</string>
     <string name="kiosk_return">Regreso</string>
     <string name="kiosk_saved">%1$s registrada ✓</string>
     <string name="kiosk_look">Mira a la cámara</string>
@@ -176,7 +176,7 @@
     <string name="face_profile_repair">Un perfil requiere nuevo registro. Acude al administrador.</string>
     <string name="face_duplicate">El rostro coincide con otro perfil. Revisa los colaboradores registrados.</string>
     <string name="face_too_soon">Ya registraste una marcación hace menos de 5 segundos. Espera y revisa el aviso anterior.</string>
-    <string name="face_wrong_break">Registra el regreso con el mismo botón: Comida o Break.</string>
+    <string name="face_wrong_break">Registra el regreso con el mismo botón: Comida o Descanso.</string>
     <string name="kiosk_brand" translatable="false">B0D</string>
     <string name="pause_unavailable">No se pudo leer la configuración de esta pausa. Consulta al administrador.</string>
     <string name="face_motion_timeout">Se agotó el tiempo. Repite los movimientos con buena luz.</string>
@@ -184,7 +184,7 @@
     <string name="punch_already_inside">Ya tienes una entrada registrada. No se guardó otra entrada.</string>
     <string name="punch_already_outside">Ya tienes una salida registrada. No se guardó otra salida.</string>
     <string name="punch_entry_required">Primero registra tu entrada para iniciar la jornada.</string>
-    <string name="punch_return_required">Tienes una pausa abierta. Registra tu regreso con Comida o Break antes de salir.</string>
+    <string name="punch_return_required">Tienes una pausa abierta. Registra tu regreso con Comida o Descanso antes de salir.</string>
     <string name="punch_no_pause">No tienes una pausa abierta para registrar un regreso.</string>
     <string name="pause_disabled">Esta pausa no está habilitada en tu perfil. Consulta al administrador.</string>
     <string name="pause_window">Esta pausa todavía no está disponible o ya superó su límite de horas.</string>

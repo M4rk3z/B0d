@@ -148,11 +148,11 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         scroll.setFillViewport(true);
         scroll.setBackgroundColor(0xffeef2f7);
         scroll.setClipToPadding(false);
-        scroll.setPadding(dp(16), dp(24), dp(16), dp(24));
+        scroll.setPadding(dp(12), dp(12), dp(12), dp(12));
         FrameLayout canvas = new FrameLayout(this);
         panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(24), dp(28), dp(24), dp(24));
+        panel.setPadding(dp(18), dp(18), dp(18), dp(18));
         panel.setBackground(surface(0xffffffff, 0xffe3e9f1, 28));
         panel.setElevation(dp(2));
         int availableWidth = getResources().getDisplayMetrics().widthPixels - dp(32);
@@ -171,12 +171,6 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
             return insets;
         });
         content.requestApplyInsets();
-        TextView badge = text(R.string.station_label, 12);
-        badge.setTextColor(0xff2457a7);
-        badge.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        badge.setLetterSpacing(0.12f);
-        badge.setPadding(dp(14), dp(10), dp(14), dp(10));
-        badge.setBackground(surface(0xffedf3ff, 0xffedf3ff, 12));
         text(title, 30);
     }
     private void showHome() {
@@ -202,14 +196,29 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         brand.setTypeface(null, Typeface.BOLD); brand.setTextColor(0xff172b42);
         LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
         header.addView(brand, new LinearLayout.LayoutParams(0, dp(48), 1));
-        panel.addView(header, new LinearLayout.LayoutParams(-1, dp(64)));
+        LinearLayout clockBox=new LinearLayout(this);clockBox.setOrientation(LinearLayout.VERTICAL);clockBox.setGravity(Gravity.CENTER);
+        android.widget.TextClock clock=new android.widget.TextClock(this);clock.setFormat12Hour("h:mm:ss a");clock.setFormat24Hour("HH:mm:ss");
+        clock.setTextColor(0xff172b42);clock.setTypeface(null,Typeface.BOLD);clock.setGravity(Gravity.CENTER);clock.setMaxLines(1);
+        clock.setAutoSizeTextTypeUniformWithConfiguration(18,30,1,android.util.TypedValue.COMPLEX_UNIT_SP);
+        android.widget.TextClock date=new android.widget.TextClock(this);date.setFormat12Hour("EEE, d MMM yyyy");date.setFormat24Hour("EEE, d MMM yyyy");
+        date.setTextColor(0xff526278);date.setTextSize(14);date.setGravity(Gravity.CENTER);date.setMaxLines(1);
+        date.setAutoSizeTextTypeUniformWithConfiguration(11,15,1,android.util.TypedValue.COMPLEX_UNIT_SP);
+        clockBox.addView(clock,new LinearLayout.LayoutParams(-1,dp(36)));clockBox.addView(date,new LinearLayout.LayoutParams(-1,dp(24)));
+        brand.setLayoutParams(new LinearLayout.LayoutParams(-2,dp(48)));brand.setText("Checador");brand.setTextSize(20);
+        LinearLayout.LayoutParams clockSlot=new LinearLayout.LayoutParams(0,-2,1);clockSlot.setMargins(dp(8),0,dp(8),0);header.addView(clockBox,clockSlot);
+        panel.addView(header, new LinearLayout.LayoutParams(-1, dp(76)));
+        LinearLayout kioskShell=panel;
+        LinearLayout body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);kioskShell.addView(body,new LinearLayout.LayoutParams(-1,0,1));
         cloudStatus = null;
         FrameLayout cameraBox = new FrameLayout(this);
         cameraBox.setBackground(surface(0xffe3eaf3, 0xffd8e1ed, 20)); cameraBox.setClipToOutline(true);
-        panel.addView(cameraBox, new LinearLayout.LayoutParams(-1, 0, 1));
+        body.addView(cameraBox, new LinearLayout.LayoutParams(-1, 0, 1));
         android.widget.ImageView placeholder = new android.widget.ImageView(this);
         placeholder.setImageResource(R.drawable.ic_person);
         cameraBox.addView(placeholder, new FrameLayout.LayoutParams(dp(150), dp(150), Gravity.CENTER));
+        ScrollView actionScroll=new ScrollView(this);actionScroll.setFillViewport(false);actionScroll.setVerticalScrollBarEnabled(false);
+        LinearLayout actionPanel=new LinearLayout(this);actionPanel.setOrientation(LinearLayout.VERTICAL);actionScroll.addView(actionPanel);
+        body.addView(actionScroll,new LinearLayout.LayoutParams(-1,-2));panel=actionPanel;
         NoticeBox status = notice("");
         LinearLayout controls = new LinearLayout(this); controls.setOrientation(LinearLayout.VERTICAL);
         panel.addView(controls,new LinearLayout.LayoutParams(-1,-2));
@@ -220,6 +229,16 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         Button exit = kioskButton(firstRow, R.string.kiosk_exit, 0, false);
         Button meal = kioskButton(secondRow, R.string.kiosk_meal, R.drawable.ic_meal, true);
         Button rest = kioskButton(secondRow, R.string.kiosk_break, R.drawable.ic_break, true);
+        panel=kioskShell;
+        int[] lastSize={-1,-1};
+        body.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{
+            int w=r-l,h=b-t;if(w<=0||h<=0||(lastSize[0]==w&&lastSize[1]==h))return;lastSize[0]=w;lastSize[1]=h;
+            boolean landscape=w>h&&w>=dp(600);body.setOrientation(landscape?LinearLayout.HORIZONTAL:LinearLayout.VERTICAL);
+            LinearLayout.LayoutParams cameraParams=new LinearLayout.LayoutParams(landscape?0:-1,landscape?-1:0,landscape?1.15f:1);
+            cameraBox.setLayoutParams(cameraParams);
+            LinearLayout.LayoutParams actionsParams=new LinearLayout.LayoutParams(landscape?0:-1,landscape?-1:Math.min(dp(360),Math.round(h*.58f)),landscape?1:0);
+            actionsParams.setMargins(landscape?dp(18):0,landscape?0:dp(10),0,0);actionScroll.setLayoutParams(actionsParams);
+        });
         android.widget.ImageButton settings = new android.widget.ImageButton(this);
         settings.setImageResource(R.drawable.ic_settings);
         settings.setContentDescription(getString(R.string.admin_access));
@@ -368,7 +387,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         void setText(String value){
             progress.setVisibility(GONE);heading.setTextSize(13);message.setTextSize(16);heading.setText("AVISOS");heading.setTextColor(0xff2457a7);message.setTextColor(0xff2457a7);
             setBackground(surface(0xffedf3ff,0xffcbdcf4,16));
-            message.setText(value.isEmpty()?"Selecciona una acción para continuar.":value);
+            message.setText(value.isEmpty()?"Elige una acción":value);
         }
         void result(String title,String detail,int color){
             setText(detail);heading.setText(title);heading.setTextSize(17);message.setTextSize(19);
@@ -387,7 +406,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
     }
     private Button kioskButton(LinearLayout parent, int label, int icon, boolean small) {
         Button button = new Button(this); button.setGravity(Gravity.CENTER); button.setElevation(dp(3)); button.setAllCaps(false); button.setText(label);
-        button.setTextSize(small ? 17 : 21); button.setTypeface(null, Typeface.BOLD);
+        button.setTextSize(22);button.setMaxLines(2);button.setMinHeight(dp(88)); button.setTypeface(null, Typeface.BOLD);
         button.setTextColor(0xff172b42);
         int fill = label == R.string.kiosk_entry ? 0xffa7e4c9 : label == R.string.kiosk_exit ? 0xffbbd3f9
                 : label == R.string.kiosk_break ? 0xffdecdf4 : 0xffffde9c;
@@ -403,7 +422,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
             button.setPadding(dp(8),dp(12),dp(8),dp(8));
         }
         LinearLayout.LayoutParams p = parent.getOrientation() == LinearLayout.VERTICAL
-                ? new LinearLayout.LayoutParams(-1, dp(60)) : new LinearLayout.LayoutParams(0, dp(60), 1);
+                ? new LinearLayout.LayoutParams(-1, dp(88)) : new LinearLayout.LayoutParams(0, dp(88), 1);
         p.setMargins(dp(4), dp(4), dp(4), dp(4)); parent.addView(button, p); return button;
     }
     private void showPin(boolean setup) {
@@ -486,7 +505,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
             int size = home ? 42 : 24;
             if (home) { icon.setPadding(dp(10),dp(10),dp(10),dp(10)); icon.setBackground(surface(0xff2457a7,0xff2457a7,24)); icon.setElevation(dp(4)); }
             item.addView(icon,new LinearLayout.LayoutParams(dp(size),dp(size)));
-            TextView label = new TextView(this); label.setText(entry.label); label.setTextSize(11); label.setGravity(Gravity.CENTER);
+            TextView label = new TextView(this); label.setText(entry.label); label.setTextSize(14); label.setGravity(Gravity.CENTER);
             label.setTextColor(selected ? 0xff2457a7 : 0xff7c8ba0); label.setTypeface(null,selected ? Typeface.BOLD : Typeface.NORMAL);
             item.addView(label); item.setContentDescription(entry.label); item.setFocusable(true);
             item.setBackground(new RippleDrawable(ColorStateList.valueOf(0x152457a7),null,null));
@@ -494,6 +513,16 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
             nav.addView(item,new LinearLayout.LayoutParams(0,-1,1));
         }
         return outer;
+    }
+    private void adaptiveRow(LinearLayout row){
+        int[] previous={-1};
+        row.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{
+            int width=r-l;if(width<=0||width==previous[0])return;previous[0]=width;
+            boolean wide=width>=dp(650);row.setOrientation(wide?LinearLayout.HORIZONTAL:LinearLayout.VERTICAL);
+            for(int i=0;i<row.getChildCount();i++){
+                LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(wide?0:-1,-2,wide?1:0);p.setMargins(dp(5),dp(5),dp(5),dp(10));row.getChildAt(i).setLayoutParams(p);
+            }
+        });
     }
     private LinearLayout dashboardCard(LinearLayout parent) {
         LinearLayout card = new LinearLayout(this); card.setOrientation(LinearLayout.VERTICAL);
@@ -535,10 +564,8 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         if (wide) metrics.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1));
         panel = metrics; text("Horas extras acumuladas",20); text(dashboardTime(data.overtime),30);
         text(data.provisional ? "Global · Incluye jornadas provisionales" : "Global · Todo el historial",14);
-        text("Cumplimiento de horario · Hoy",20);
-        text(data.progress.percent() < 0 ? "Sin horarios" : data.progress.percent() + " %",30);
-        text("Horas efectivas / jornada prevista",14);
-        panel = outer;
+
+        panel = outer;adaptiveRow(info);
         int token = generation;
         handler.postDelayed(() -> {
             if (foreground && authenticated && generation == token && !busy) {
@@ -556,7 +583,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         screen(R.string.admin_title);
         text("Conexión con Render", 23);
         cloudStatus = text(new CloudSync(this).status(), 16);
-        text("Genera el código en la web, en Tablet. Válido por 10 minutos.", 15);
+
         EditText credential = new EditText(this);
         credential.setHint("Código de 8 dígitos");
         credential.setInputType(InputType.TYPE_CLASS_NUMBER);
@@ -596,32 +623,32 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         if (!requireAdmin()) return;
         screen(R.string.workers_title);
         LinearLayout outer = panel;
-        int columns = Math.max(1, Math.min(4, (getResources().getConfiguration().screenWidthDp - 80) / 170));
-        LinearLayout line = null;
-        for (int i=0; i<=rows.size(); i++) {
-            if (i % columns == 0) { line = new LinearLayout(this); outer.addView(line); }
-            LinearLayout card = dashboardCard(line);
-            LinearLayout.LayoutParams slot = new LinearLayout.LayoutParams(0,-2,1); slot.setMargins(dp(5),dp(5),dp(5),dp(10)); card.setLayoutParams(slot);
-            panel = card;
-            if (i == rows.size()) {
-                Button add = button(R.string.add_worker,this::showAddWorker); add.setText("＋"); add.setTextSize(48); add.setMinHeight(dp(170));
-                add.setContentDescription(getString(R.string.add_worker));
-                for (int spare=(i % columns)+1; spare<columns; spare++) line.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));
-                break;
+        android.widget.GridLayout grid=new android.widget.GridLayout(this);grid.setColumnCount(1);outer.addView(grid,new LinearLayout.LayoutParams(-1,-2));
+        for(int i=0;i<=rows.size();i++){
+            LinearLayout temporary=new LinearLayout(this),card=dashboardCard(temporary);temporary.removeView(card);grid.addView(card);panel=card;
+            if(i==rows.size()){
+                Button add=button(R.string.add_worker,this::showAddWorker);add.setText("＋ Nuevo colaborador");add.setTextSize(20);add.setMinHeight(dp(180));continue;
             }
-            WorkersDb.Worker row = rows.get(i);
-            android.widget.ImageView avatar = new android.widget.ImageView(this);
-            avatar.setImageResource(R.drawable.ic_person); avatar.setContentDescription(row.name);
-            avatar.setBackground(surface(0xffe3eaf3,0xffe3eaf3,16));
-            panel.addView(avatar,new LinearLayout.LayoutParams(-1,dp(110)));
-            text(row.name,19); text(row.code,14);
-            Button face = button(row.hasFace ? R.string.face_registered : R.string.face_register, () -> showFace(row));
-            face.setText(row.hasFace ? "Perfil facial ✓" : "Registrar rostro"); face.setTextSize(14);
-            Button state = button(row.active ? R.string.deactivate_worker : R.string.activate_worker,() -> confirmStateChange(row));
-            state.setText(row.active ? "● Activo" : "○ Inactivo"); state.setTextSize(14);
-            Button delete = button(R.string.delete_worker,() -> confirmDelete(row)); delete.setTextSize(14);
+            WorkersDb.Worker row=rows.get(i);
+            text(row.name,22);text(row.code,16);
+            Button face=button(row.hasFace?R.string.face_registered:R.string.face_register,()->showFace(row));
+            face.setText(row.hasFace?"Ver rostro":"Registrar rostro");face.setTextSize(18);
+            Button state=button(row.active?R.string.deactivate_worker:R.string.activate_worker,()->confirmStateChange(row));
+            state.setText(row.active?"Desactivar":"Activar");state.setTextSize(18);
+            button(R.string.delete_worker,()->confirmDelete(row)).setTextSize(18);
         }
-        panel = outer;
+        int[] lastWidth={-1};grid.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{
+            int width=r-l;if(width<=0||lastWidth[0]==width)return;lastWidth[0]=width;
+            int columns=Math.max(1,Math.min(4,width/dp(240)));
+            // Clear old specs before reducing the column count.
+            for(int i=0;i<grid.getChildCount();i++)grid.getChildAt(i).setLayoutParams(new android.widget.GridLayout.LayoutParams());
+            grid.setColumnCount(columns);
+            for(int i=0;i<grid.getChildCount();i++){
+                android.widget.GridLayout.LayoutParams slot=new android.widget.GridLayout.LayoutParams(android.widget.GridLayout.spec(i/columns),android.widget.GridLayout.spec(i%columns));
+                slot.width=width/columns-dp(10);slot.height=-2;slot.setMargins(dp(5),dp(5),dp(5),dp(10));grid.getChildAt(i).setLayoutParams(slot);
+            }
+        });
+        panel=outer;
     }
     private void showFace(WorkersDb.Worker worker) {
         if (!requireAdmin() || busy) return;
@@ -678,6 +705,9 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         screen(R.string.face_title);
         text(worker.name + " · " + worker.code, 24);
 
+        LinearLayout captureOuter=panel,captureRow=new LinearLayout(this),cameraColumn=new LinearLayout(this),captureControls=new LinearLayout(this);
+        captureRow.setOrientation(LinearLayout.VERTICAL);cameraColumn.setOrientation(LinearLayout.VERTICAL);captureControls.setOrientation(LinearLayout.VERTICAL);
+        captureOuter.addView(captureRow,new LinearLayout.LayoutParams(-1,-2));captureRow.addView(cameraColumn,new LinearLayout.LayoutParams(-1,-2));captureRow.addView(captureControls,new LinearLayout.LayoutParams(-1,-2));panel=cameraColumn;
         androidx.camera.view.PreviewView preview = new androidx.camera.view.PreviewView(this);
         preview.setImplementationMode(androidx.camera.view.PreviewView.ImplementationMode.COMPATIBLE);
         preview.setScaleType(androidx.camera.view.PreviewView.ScaleType.FIT_CENTER);
@@ -686,9 +716,10 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         cameraFrame.addView(preview,new FrameLayout.LayoutParams(-1,-1));
         FaceCaptureGuide guide=new FaceCaptureGuide(this);cameraFrame.addView(guide,new FrameLayout.LayoutParams(-1,-1));
         panel.addView(cameraFrame,new LinearLayout.LayoutParams(-1,dp(280)));
+        panel=captureControls;
         TextView status = text("Centra tu rostro dentro del óvalo", 22);status.setGravity(Gravity.CENTER);
         status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        TextView progressText=text("5 posiciones · Sigue las flechas y mantén quieta la cámara",15);progressText.setGravity(Gravity.CENTER);
+        TextView progressText=text("Sigue las flechas · 5 posiciones",15);progressText.setGravity(Gravity.CENTER);
         android.widget.ProgressBar progressBar=new android.widget.ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
         progressBar.setMax(5);progressBar.setProgressTintList(ColorStateList.valueOf(0xff218567));panel.addView(progressBar,new LinearLayout.LayoutParams(-1,dp(12)));
         int token=generation;
@@ -757,6 +788,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
                 controls[0].setText("Repetir captura");controls[0].setEnabled(true);controls[1].setEnabled(true);
             }
         });
+        panel=captureOuter;adaptiveRow(captureRow);
     }
 
     @Override public void onRequestPermissionsResult(int code, String[] permissions, int[] results) {
@@ -954,7 +986,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         if (!requireAdmin() || busy) return;
         runAttendanceTask(true, db -> new HistoryData(new AttendanceRepository(db.getReadableDatabase()).recentSummaries(System.currentTimeMillis()), db.recentPunches()), data -> {
             screen(R.string.punch_history);
-            text(R.string.daily_history_limit, 16);
+
             button(R.string.back_admin, this::showAdmin);
             if (data.summaries.isEmpty()) text(R.string.no_punches, 18);
             for (AttendanceRepository.Summary row : data.summaries) {
@@ -967,7 +999,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
             LinearLayout parent = panel, raw = new LinearLayout(this);
             raw.setOrientation(LinearLayout.VERTICAL); parent.addView(raw, params());
             panel = raw;
-            text(R.string.history_limit, 14);
+
             for (WorkersDb.Punch row : data.punches) {
                 text(getString(R.string.history_worker, row.name, row.code), 22);
                 text(formatPunch(row), 16);
@@ -1058,7 +1090,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
     }
     private Button button(int label, Runnable action) {
         Button button = new Button(this);
-        button.setText(label); button.setAllCaps(false); button.setMinHeight(dp(56));
+        button.setText(label); button.setAllCaps(false); button.setMinHeight(dp(64));
         boolean danger = label == R.string.delete_worker || label == R.string.deactivate_worker;
         boolean secondary = label == R.string.back_home || label == R.string.back_admin ||
                 label == R.string.cancel_worker || label == R.string.logout || label == R.string.not_me;
@@ -1068,7 +1100,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         button.setBackground(new RippleDrawable(ColorStateList.valueOf(0x222457a7), surface(fill, fill, 18), null));
         button.setTextColor(new ColorStateList(new int[][]{new int[]{-android.R.attr.state_enabled}, new int[]{}}, new int[]{0xff8795a8, ink}));
         button.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        button.setTextSize(17);
+        button.setTextSize(19);
         button.setPadding(dp(20), dp(14), dp(20), dp(14));
         button.setElevation(dp(3));
         button.setGravity(Gravity.CENTER);
