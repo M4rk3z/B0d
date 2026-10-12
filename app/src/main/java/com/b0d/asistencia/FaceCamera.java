@@ -26,6 +26,7 @@ final class FaceCamera implements AutoCloseable {
         void ready();
         void captured(byte[] jpeg);
         default void progress(String message,int step) {}
+        default void guidance(int pose,int completed,int total) {}
         default void capturedSeries(java.util.List<byte[]> photos) { captured(photos.get(0)); }
     }
     private final PreviewView view;
@@ -44,14 +45,19 @@ final class FaceCamera implements AutoCloseable {
         if(closed||taking||capture==null)return;
         challenge=new MotionChallenge(enrollment);challengeStarted=android.os.SystemClock.elapsedRealtime();samples.clear();capture();
     }
-    private void retryGuided(){
+    private void publishGuidance(){
+        listener.progress(challenge.prompt(),challenge.index);
+        listener.guidance(challenge.poses[challenge.index],challenge.index,challenge.poses.length);
+    }
+    private void retryGuided(){retryGuided(false);}
+    private void retryGuided(boolean attention){
         taking=false;
         if(android.os.SystemClock.elapsedRealtime()-challengeStarted>90000){
             for(byte[] sample:samples)java.util.Arrays.fill(sample,(byte)0);samples.clear();challenge=null;
             listener.status(R.string.face_motion_timeout);listener.ready();return;
         }
-        listener.progress(challenge.prompt(),challenge.index);
-        handler.postDelayed(this::capture,350);
+        if(!attention)publishGuidance();
+        handler.postDelayed(this::capture,attention?1200:350);
     }
 
     private final FaceDetector detector = FaceDetection.getClient(new FaceDetectorOptions.Builder()
@@ -79,7 +85,7 @@ final class FaceCamera implements AutoCloseable {
     void capture() {
         if (closed || capture == null || taking) return;
         taking = true;
-        if(challenge==null)listener.status(R.string.face_checking);else listener.progress(challenge.prompt(),challenge.index);
+        if(challenge==null)listener.status(R.string.face_checking);else publishGuidance();
         if (view.getDisplay() != null) capture.setTargetRotation(view.getDisplay().getRotation());
         capture.takePicture(worker, new ImageCapture.OnImageCapturedCallback() {
             @Override public void onCaptureSuccess(ImageProxy image) {
@@ -141,7 +147,7 @@ final class FaceCamera implements AutoCloseable {
     private void fail(int message) {
         main.execute(() -> {
             if (closed) return;
-            if(challenge!=null){challenge.resetHold();listener.status(message);retryGuided();}
+            if(challenge!=null){challenge.resetHold();listener.status(message);retryGuided(true);}
             else {taking = false; listener.status(message); listener.ready();}
         });
     }

@@ -31,6 +31,7 @@ import java.util.List;
 public final class MainActivity extends Activity implements androidx.lifecycle.LifecycleOwner {
     private final androidx.lifecycle.LifecycleRegistry lifecycle = new androidx.lifecycle.LifecycleRegistry(this);
     private FaceCamera faceCamera;
+    private android.media.ToneGenerator faceTone;
     private android.widget.ImageView faceImage;
     private byte[] pendingFace;
     private java.util.List<byte[]> pendingSamples;
@@ -63,6 +64,7 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC);
         lifecycle.handleLifecycleEvent(androidx.lifecycle.Lifecycle.Event.ON_CREATE);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         access = new AdminAccess(new PreferenceCredentialStore(this));
@@ -106,10 +108,19 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
     }
     @Override protected void onDestroy() {
         clearFace();
+        if(faceTone!=null){faceTone.release();faceTone=null;}
         lifecycle.handleLifecycleEvent(androidx.lifecycle.Lifecycle.Event.ON_DESTROY);
         super.onDestroy();
     }
+    private void faceSound(boolean saved){
+        if(!foreground||!getPreferences(MODE_PRIVATE).getBoolean("face_sound",true))return;
+        try{
+            if(faceTone==null)faceTone=new android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC,65);
+            faceTone.startTone(saved?android.media.ToneGenerator.TONE_PROP_BEEP2:android.media.ToneGenerator.TONE_PROP_ACK,saved?220:100);
+        }catch(RuntimeException ignored){ /* Sound must never prevent a capture. */ }
+    }
     private void clearFace() {
+        if(faceTone!=null)faceTone.stopTone();
         if (faceCamera != null) { faceCamera.close(); faceCamera = null; }
         if(pendingSamples!=null){for(byte[] photo:pendingSamples)java.util.Arrays.fill(photo,(byte)0);pendingSamples=null;}
         if (pendingFace != null) { java.util.Arrays.fill(pendingFace, (byte) 0); pendingFace = null; }
@@ -589,7 +600,9 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         text(worker.code, 18);
         if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED)
             text(R.string.face_permission_help, 16);
-        if (saved) text(R.string.face_saved, 18);
+        if (saved) {
+            NoticeBox success=notice("Perfil facial guardado");success.setTextColor(0xff28694b);faceSound(true);
+        }
         if (profile == null) text(R.string.face_empty, 18);
         else {
             text(getString(R.string.face_date, java.time.Instant.ofEpochMilli(profile.capturedAt)
@@ -633,27 +646,48 @@ public final class MainActivity extends Activity implements androidx.lifecycle.L
         androidx.camera.view.PreviewView preview = new androidx.camera.view.PreviewView(this);
         preview.setImplementationMode(androidx.camera.view.PreviewView.ImplementationMode.COMPATIBLE);
         preview.setScaleType(androidx.camera.view.PreviewView.ScaleType.FIT_CENTER);
-        panel.addView(preview, new LinearLayout.LayoutParams(-1, dp(320)));
-        TextView status = text(R.string.face_starting, 17);
+        FrameLayout cameraFrame=new FrameLayout(this);
+        cameraFrame.setBackground(surface(0xff172b42,0xff172b42,20));cameraFrame.setClipToOutline(true);
+        cameraFrame.addView(preview,new FrameLayout.LayoutParams(-1,-1));
+        FaceCaptureGuide guide=new FaceCaptureGuide(this);cameraFrame.addView(guide,new FrameLayout.LayoutParams(-1,-1));
+        panel.addView(cameraFrame,new LinearLayout.LayoutParams(-1,dp(280)));
+        TextView status = text("Centra tu rostro dentro del óvalo", 22);status.setGravity(Gravity.CENTER);
+        status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        TextView progressText=text("5 posiciones · Sigue las flechas y mantén quieta la cámara",15);progressText.setGravity(Gravity.CENTER);
+        android.widget.ProgressBar progressBar=new android.widget.ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
+        progressBar.setMax(5);progressBar.setProgressTintList(ColorStateList.valueOf(0xff218567));panel.addView(progressBar,new LinearLayout.LayoutParams(-1,dp(12)));
+        CheckBox sound=new CheckBox(this);sound.setText("Sonidos de captura");sound.setTextColor(0xff172b42);sound.setChecked(getPreferences(MODE_PRIVATE).getBoolean("face_sound",true));
+        sound.setOnCheckedChangeListener((view,checked)->{getPreferences(MODE_PRIVATE).edit().putBoolean("face_sound",checked).apply();if(!checked&&faceTone!=null)faceTone.stopTone();});panel.addView(sound,params());
         Button captureButton = button(R.string.face_capture, () -> {
             if (requireAdmin() && faceCamera != null) faceCamera.captureGuided(true);
         });
+        captureButton.setText("Comenzar registro guiado");
         captureButton.setEnabled(false);
         button(R.string.face_cancel, () -> showFace(worker));
         int token = generation;
         faceCamera = new FaceCamera(preview, this, WORKER, new FaceCamera.Listener() {
             private boolean current() { return foreground && authenticated && generation == token; }
             @Override public void status(int message) {
-                if (current()) { status.setText(message); captureButton.setEnabled(false); }
+                if (current()) { status.setText(message); captureButton.setEnabled(false); if(message!=R.string.face_ready&&message!=R.string.face_back_camera)guide.attention(); }
             }
             @Override public void ready() { if (current()) captureButton.setEnabled(true); }
-            @Override public void progress(String message,int step){if(current()){status.setText(message);captureButton.setEnabled(false);}}
+            private int lastStep=-1;
+            @Override public void guidance(int pose,int completed,int total){
+                if(!current())return;
+                guide.update(pose,completed,total);progressBar.setProgress(completed);
+                progressText.setText(completed+" de "+total+" posiciones capturadas");
+                if(completed>lastStep&&completed>0)faceSound(false);lastStep=completed;
+            }
+            @Override public void progress(String message,int step){if(current()){if(!status.getText().toString().equals(message))status.setText(message);captureButton.setEnabled(false);}}
+
             @Override public void captured(byte[] jpeg){java.util.Arrays.fill(jpeg,(byte)0);}
             @Override public void capturedSeries(java.util.List<byte[]> photos) {
                 if (!current()) { for(byte[] photo:photos)java.util.Arrays.fill(photo,(byte)0); return; }
                 screen(R.string.face_title);
                 text(worker.name + " · " + worker.code, 24);
 
+                notice("✓ 5 de 5 posiciones capturadas\nRevisa el rostro y pulsa Guardar perfil.");
+                faceSound(false);
                 pendingSamples=photos; pendingFace=photos.get(0);
                 displayFace(pendingFace);
                 button(R.string.face_save, () -> {
