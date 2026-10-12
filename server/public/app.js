@@ -31,7 +31,7 @@ const write = (path, data, method = 'POST') => api(path, { method, headers: { 'C
     document.body.classList.toggle('login-screen', !logged);
     if (logged) document.querySelector('.app-header').after($('status'));
     else $('login').insertBefore($('status'), $('login').querySelector('button'));
-    if (!logged) { $('report-preview').replaceChildren(); $('report-status').textContent = ''; }
+    if (!logged) { ++punchRequest;appliedPunchFilters=new URLSearchParams();$('punch-filters').reset();$('report-preview').replaceChildren(); $('report-status').textContent = ''; }
     if (!logged) { $('password-dialog').close();finishConfirm(false); }
   if (!logged) { $('device-token').value = ''; $('device-secret').hidden = true; $('devices').replaceChildren(); $('punches').replaceChildren(); }
   $('login').hidden = logged; $('workspace').hidden = !logged; $('logout').hidden = !logged; $('identity').hidden = !logged;
@@ -138,7 +138,8 @@ $('download').addEventListener('click', async () => {
 });
 load().catch(error => { visible(false); if (error.message !== 'Inicia sesión' && error.message !== 'La sesión terminó') $('status').textContent = error.message; });
 
-let punchOffset = 0;
+let punchOffset = 0, punchRequest = 0;
+let appliedPunchFilters=new URLSearchParams();
 async function loadDevices() {
   const rows = await api('/api/devices'); $('devices').replaceChildren();
   for (const row of rows) {
@@ -167,9 +168,12 @@ submit('device-form', async data => {
 });
 const kindLabel = row => ({ IN: 'Entrada', OUT: 'Salida', BREAK_START: row.action === 'MEAL' ? 'Inicio de comida' : 'Inicio de descanso', BREAK_END: row.action === 'MEAL' ? 'Fin de comida' : 'Fin de descanso' })[row.kind] || row.kind;
 async function loadPunches(reset = true) {
-  if (reset) { punchOffset = 0; $('punches').replaceChildren(); }
-  const page = await api(`/api/punches?offset=${punchOffset}`);
-  if (reset && !page.rows.length) $('punches').append(element('p', 'Todavía no hay marcaciones sincronizadas'));
+  const request=++punchRequest;
+  if (reset) { punchOffset = 0; $('punches').replaceChildren(); $('more-punches').hidden=true; }
+  const params=new URLSearchParams(appliedPunchFilters);params.set('offset',punchOffset);
+  const page = await api('/api/punches?'+params);
+  if(request!==punchRequest||!current)return;
+  if (reset && !page.rows.length) $('punches').append(element('p', 'No hay marcaciones con estos filtros'));
   for (const row of page.rows) {
     const card = element('article', '', 'card'); card.append(element('h3', row.worker_name), element('p', row.worker_code, 'muted'), element('span', kindLabel(row), 'pill punch-'+row.kind.toLowerCase()), element('p', new Date(Number(row.occurred_at)).toLocaleString('es', { timeZone: row.zone_id })), element('p', row.zone_id, 'muted')); $('punches').append(card);
   }
@@ -178,11 +182,18 @@ async function loadPunches(reset = true) {
 for (const [id, reset] of [['refresh-punches', true], ['more-punches', false]]) $(id).addEventListener('click', async () => {
   $(id).disabled = true; try { await loadPunches(reset); } catch (error) { $('status').textContent = error.message; } finally { $(id).disabled = false; }
 });
+$('punch-filters').addEventListener('submit',async event=>{
+ event.preventDefault();
+ appliedPunchFilters=new URLSearchParams({q:$('punch-search').value.trim(),kind:$('punch-kind').value,from:$('punch-from').value,to:$('punch-to').value});
+ $('status').textContent='';
+ try{await loadPunches();}catch(error){$('status').textContent=error.message;}
+});
+$('punch-clear').addEventListener('click',()=>{$('punch-filters').reset();$('punch-filters').requestSubmit();});
 $('download-punches').addEventListener('click', async () => {
   $('download-punches').disabled = true;
   try {
-    let offset = 0; const rows = [];
-    do { const page = await api(`/api/punches?offset=${offset}`); rows.push(...page.rows); offset = page.next; } while (offset !== null);
+    let offset = 0; const rows = [];const filters=new URLSearchParams(appliedPunchFilters);
+    do { filters.set('offset',offset);const page = await api('/api/punches?'+filters); rows.push(...page.rows); offset = page.next; } while (offset !== null);
     const cell = value => { let text = String(value ?? ''); if (/^[\s]*[=+@-]/u.test(text)) text = "'" + text; return '"' + text.replaceAll('"','""') + '"'; };
     const values = [['Evento','Código','Nombre','Marcación','Fecha UTC','Zona','Método'], ...rows.filter(row=>$('report-breaks').checked||['IN','OUT'].includes(row.kind)).map(row => [row.event_id,row.worker_code,row.worker_name,kindLabel(row),new Date(Number(row.occurred_at)).toISOString(),row.zone_id,row.method])];
     const blob = new Blob(['\ufeff'+values.map(row => row.map(cell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });

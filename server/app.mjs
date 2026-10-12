@@ -1,3 +1,4 @@
+import {punchQuery} from './punch-filters.mjs';
 import {defaults,validateSequence,getSequence} from './sequences.mjs';
 import { createServer } from 'node:http';
 import { randomBytes, randomUUID, createHash, scryptSync, timingSafeEqual } from 'node:crypto';
@@ -158,9 +159,8 @@ export function createApplication(pool, { origin }) {
       }
       if (req.method === 'GET' && path === '/api/punches') {
         const params = new URL(req.url, origin).searchParams;
-        const offset = Number(params.get('offset') || 0);
-        requireValue(Number.isSafeInteger(offset) && offset >= 0, 'Página inválida');
-        const rows = (await pool.query('SELECT event_id,worker_code,worker_name,kind,occurred_at,zone_id,method,action FROM b0d_punches ORDER BY occurred_at,event_id LIMIT 501 OFFSET $1', [offset])).rows;
+        const {sql,values,offset}=punchQuery(params);
+        const rows=(await pool.query(sql,values)).rows;
         json(200, { rows: rows.slice(0,500), next: rows.length > 500 ? offset+500 : null }); return;
       }
       const requireAdmin = () => { if (current.role !== 'Admin') throw new HttpError(403, 'Solo administradores'); };
